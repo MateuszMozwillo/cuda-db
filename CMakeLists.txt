@@ -7,21 +7,21 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-add_library(tsdb_core
+add_library(db_core
     src/parser.cpp
 )
 
 add_executable(gpu-db
     src/main.cpp
 )
-target_link_libraries(gpu-db PRIVATE tsdb_core)
+target_link_libraries(gpu-db PRIVATE db_core)
 
 if(MSVC)
     target_compile_options(gpu-db PRIVATE /O2)
-    target_compile_options(tsdb_core PRIVATE /O2)
+    target_compile_options(db_core PRIVATE /O2)
 else()
     target_compile_options(gpu-db PRIVATE -O3 -march=native -Wall -Wextra)
-    target_compile_options(tsdb_core PRIVATE -O3 -march=native -Wall -Wextra)
+    target_compile_options(db_core PRIVATE -O3 -march=native -Wall -Wextra)
 endif()
 
 enable_testing()
@@ -38,7 +38,7 @@ add_executable(unit_tests
     tests/test_parser.cpp
 )
 
-target_link_libraries(unit_tests PRIVATE tsdb_core Catch2::Catch2WithMain)
+target_link_libraries(unit_tests PRIVATE db_core Catch2::Catch2WithMain)
 
 include(CTest)
 include(Catch)

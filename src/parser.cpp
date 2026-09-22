@@ -1,18 +1,19 @@
 #include "db/parser.hpp"
 
-bool parse_line(const char* input, DataPoint& result) 
-{
+namespace db {
+
+bool parse_line(const char* input, DataPoint& result) {
     result.clear();
-    
+
     ParserState ps = MEASUREMENT;
     const char* start_ptr = input; 
     const char* current = input;
     bool in_quotes = false; 
-    
+
     result.timestamp = std::string_view(current, 0);
 
     while (*current != '\0' && ps != ERROR) {
-        
+
         if (*current == '\\') {
             if (*(current + 1) != '\0') {
                 current += 2; 
@@ -159,4 +160,5 @@ end_loop:
     }
 
     return true;
+}
 }

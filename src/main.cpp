@@ -7,7 +7,7 @@
 int main() {
     const char* input = "sensor,location=Nowy-Jork temperature=80.5,pressure=1024.1";
 
-    DataPoint point;
+    db::DataPoint point;
     
     if (!parse_line(input, point)) {
         std::cerr << "PARSING ERROR\n";

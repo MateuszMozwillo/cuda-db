@@ -3,6 +3,8 @@
 #include <string_view>
 #include <array>
 
+namespace db {
+
 constexpr unsigned int MAX_TAG_COUNT = 32;
 constexpr unsigned int MAX_FIELD_COUNT = 128;
 
@@ -38,3 +40,4 @@ enum ParserState {
 };
 
 bool parse_line(const char* input, DataPoint& result);
+}

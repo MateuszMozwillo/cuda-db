@@ -2,6 +2,8 @@
 #include <string_view>
 #include "db/parser.hpp"
 
+using namespace db;
+
 TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
     DataPoint point;
 
@@ -199,5 +201,30 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         REQUIRE(success == true);
         REQUIRE(point.field_count == 1);
         REQUIRE(point.fields[0].value == "\"\""); 
+    }
+
+    SECTION("Reject line exceeding MAX_TAG_COUNT") {
+        std::string input = "sensor";
+        for (unsigned int i = 0; i <= MAX_TAG_COUNT; ++i) {
+            input += ",tag" + std::to_string(i) + "=value";
+        }
+        input += " temp=80.5\n";
+
+        bool success = parse_line(input.c_str(), point);
+        
+        REQUIRE(success == false); 
+    }
+
+    SECTION("Reject line exceeding MAX_FIELD_COUNT") {
+        std::string input = "sensor,loc=Krakow ";
+        for (unsigned int i = 0; i <= MAX_FIELD_COUNT; ++i) {
+            if (i > 0) input += ",";
+            input += "field" + std::to_string(i) + "=1.0";
+        }
+        input += "\n";
+
+        bool success = parse_line(input.c_str(), point);
+        
+        REQUIRE(success == false);
     }
 }
