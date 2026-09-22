@@ -13,8 +13,8 @@ enum ParserState {
     ERROR
 };
 
-const unsigned int MAX_TAG_COUNT = 5;
-const unsigned int MAX_FIELD_COUNT = 5;
+const unsigned int MAX_TAG_COUNT = 16;
+const unsigned int MAX_FIELD_COUNT = 64;
 
 struct KeyValuePair {
     std::string_view key;

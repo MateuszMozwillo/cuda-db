@@ -14,6 +14,8 @@ bool parse_line(const char* input,
     
     tag_count = 0;
     field_count = 0;
+    
+    timestamp = std::string_view(current, 0);
 
     while (*current != '\0' && ps != ERROR) {
         
@@ -104,7 +106,9 @@ bool parse_line(const char* input,
                     fields[field_count].value = std::string_view(start_ptr, current - start_ptr);
                     if (fields[field_count].value.empty()) { ps = ERROR; break; }
                     field_count++;
-                    ps = TIMESTAMP; 
+
+                    timestamp = std::string_view(current, 0); 
+                    ps = TIMESTAMP;
                     goto end_loop;
                 }
                 break;
@@ -126,18 +130,21 @@ bool parse_line(const char* input,
     }
 
 end_loop:
-    if (ps == TIMESTAMP && timestamp.empty() && current > start_ptr) {
-        timestamp = std::string_view(start_ptr, current - start_ptr);
-        while (!timestamp.empty() && timestamp.back() == ' ') {
-            timestamp.remove_suffix(1);
-        }
-    } else if (ps == DATA_VALUE && current > start_ptr) {
-        fields[field_count].value = std::string_view(start_ptr, current - start_ptr);
-        if (!fields[field_count].value.empty()) {
-            field_count++;
-            ps = TIMESTAMP; 
-        } else {
-            ps = ERROR;
+    if (*current == '\0') {
+        if (ps == DATA_VALUE && current > start_ptr) {
+            fields[field_count].value = std::string_view(start_ptr, current - start_ptr);
+            if (!fields[field_count].value.empty()) {
+                field_count++;
+                timestamp = std::string_view(current, 0);
+                ps = TIMESTAMP; 
+            } else {
+                ps = ERROR;
+            }
+        } else if (ps == TIMESTAMP && current > start_ptr) {
+            timestamp = std::string_view(start_ptr, current - start_ptr);
+            while (!timestamp.empty() && timestamp.back() == ' ') {
+                timestamp.remove_suffix(1);
+            }
         }
     }
 
