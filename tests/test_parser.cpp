@@ -151,4 +151,72 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         REQUIRE(field_count == 1);
         REQUIRE(fields[0].value == "99.9");
     }
+    
+    SECTION("quoted string field with spaces") {
+        const char* input = "app_log msg=\"fatal error occurred\" 1727034041000\n";
+        bool success = parse_line(input, measurement, tags, tag_count, timestamp, fields, field_count);
+
+        REQUIRE(success == true);
+        REQUIRE(measurement == "app_log");
+        REQUIRE(field_count == 1);
+        REQUIRE(fields[0].key == "msg");
+        
+        REQUIRE(fields[0].value == "\"fatal error occurred\"");
+        
+        REQUIRE(timestamp == "1727034041000");
+    }
+
+    SECTION("Valid line with quoted string containing spaces") {
+        const char* input = "app_log msg=\"fatal error occurred\" 1727034041000\n";
+        bool success = parse_line(input, measurement, tags, tag_count, timestamp, fields, field_count);
+
+        REQUIRE(success == true);
+        REQUIRE(measurement == "app_log");
+        REQUIRE(field_count == 1);
+        REQUIRE(fields[0].key == "msg");
+        REQUIRE(fields[0].value == "\"fatal error occurred\""); 
+        REQUIRE(timestamp == "1727034041000");
+    }
+
+    SECTION("Valid line with escaped quotes inside a quoted string") {
+        const char* input = "app_log msg=\"hello \\\"world\\\"\" 1727034041000\n";
+        bool success = parse_line(input, measurement, tags, tag_count, timestamp, fields, field_count);
+
+        REQUIRE(success == true);
+        REQUIRE(measurement == "app_log");
+        REQUIRE(field_count == 1);
+        REQUIRE(fields[0].key == "msg");
+        REQUIRE(fields[0].value == "\"hello \\\"world\\\"\""); 
+        REQUIRE(timestamp == "1727034041000");
+    }
+
+    SECTION("Reject line with unclosed quote") {
+        const char* input = "app_log msg=\"this string never ends 1727034041000\n";
+        bool success = parse_line(input, measurement, tags, tag_count, timestamp, fields, field_count);
+
+        REQUIRE(success == false);
+    }
+
+    SECTION("Multiple quoted fields and numeric fields mixed") {
+        const char* input = "audit user=\"mati\",action=\"login\",attempts=3 1727034041000\n";
+        bool success = parse_line(input, measurement, tags, tag_count, timestamp, fields, field_count);
+
+        REQUIRE(success == true);
+        REQUIRE(field_count == 3);
+        REQUIRE(fields[0].key == "user");
+        REQUIRE(fields[0].value == "\"mati\"");
+        REQUIRE(fields[1].key == "action");
+        REQUIRE(fields[1].value == "\"login\"");
+        REQUIRE(fields[2].key == "attempts");
+        REQUIRE(fields[2].value == "3");
+    }
+
+    SECTION("Empty quoted string") {
+        const char* input = "app_log msg=\"\" 1727034041000\n";
+        bool success = parse_line(input, measurement, tags, tag_count, timestamp, fields, field_count);
+
+        REQUIRE(success == true);
+        REQUIRE(field_count == 1);
+        REQUIRE(fields[0].value == "\"\""); 
+    }
 }

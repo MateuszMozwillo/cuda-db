@@ -14,6 +14,7 @@ bool parse_line(const char* input,
     
     tag_count = 0;
     field_count = 0;
+    bool in_quotes = false; 
     
     timestamp = std::string_view(current, 0);
 
@@ -87,13 +88,16 @@ bool parse_line(const char* input,
                 break;
 
             case DATA_VALUE:
-                if (*current == ',') {
+                if (*current == '"') {
+                    in_quotes = !in_quotes;
+                } 
+                else if (*current == ',' && !in_quotes) {
                     fields[field_count].value = std::string_view(start_ptr, current - start_ptr);
                     if (fields[field_count].value.empty()) { ps = ERROR; break; }
                     field_count++;
                     start_ptr = current + 1;
                     ps = DATA_KEY;
-                } else if (*current == ' ') {
+                } else if (*current == ' ' && !in_quotes) {
                     fields[field_count].value = std::string_view(start_ptr, current - start_ptr);
                     if (fields[field_count].value.empty()) { ps = ERROR; break; }
                     field_count++;
@@ -103,6 +107,11 @@ bool parse_line(const char* input,
                     start_ptr = current + 1;
                     ps = TIMESTAMP;
                 } else if (*current == '\n' || *current == '\r') {
+                    if (in_quotes) { 
+                        ps = ERROR; 
+                        break; 
+                    }
+                    
                     fields[field_count].value = std::string_view(start_ptr, current - start_ptr);
                     if (fields[field_count].value.empty()) { ps = ERROR; break; }
                     field_count++;
@@ -130,7 +139,11 @@ bool parse_line(const char* input,
     }
 
 end_loop:
-    if (*current == '\0') {
+    if (in_quotes) {
+        ps = ERROR;
+    }
+
+    if (*current == '\0' && ps != ERROR) {
         if (ps == DATA_VALUE && current > start_ptr) {
             fields[field_count].value = std::string_view(start_ptr, current - start_ptr);
             if (!fields[field_count].value.empty()) {
