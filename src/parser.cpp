@@ -27,13 +27,13 @@ bool parse_line(const char* input, DataPoint& result) {
         switch (ps) {
             case MEASUREMENT:
                 if (*current == ',') {
-                    result.measurement = std::string_view(start_ptr, current - start_ptr);
-                    if (result.measurement.empty()) { ps = ERROR; break; }
+                    result.dataset = std::string_view(start_ptr, current - start_ptr);
+                    if (result.dataset.empty()) { ps = ERROR; break; }
                     start_ptr = current + 1;
                     ps = TAG_KEY;
                 } else if (*current == ' ') { 
-                    result.measurement = std::string_view(start_ptr, current - start_ptr);
-                    if (result.measurement.empty()) { ps = ERROR; break; }
+                    result.dataset = std::string_view(start_ptr, current - start_ptr);
+                    if (result.dataset.empty()) { ps = ERROR; break; }
                     
                     while (*(current + 1) == ' ') current++;
                     

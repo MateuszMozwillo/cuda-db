@@ -14,7 +14,7 @@ struct KeyValuePair {
 };
 
 struct DataPoint {
-    std::string_view measurement;
+    std::string_view dataset;
     std::array<KeyValuePair, MAX_TAG_COUNT> tags;
     unsigned int tag_count = 0;
     std::array<KeyValuePair, MAX_FIELD_COUNT> fields;
@@ -24,7 +24,7 @@ struct DataPoint {
     void clear() {
         tag_count = 0;
         field_count = 0;
-        measurement = {};
+        dataset = {};
         timestamp = {};
     }
 };

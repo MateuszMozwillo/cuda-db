@@ -12,7 +12,7 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         bool success = parse_line(input, point);
 
         REQUIRE(success == true);
-        REQUIRE(point.measurement == "sensor");
+        REQUIRE(point.dataset == "sensor");
         REQUIRE(point.tag_count == 1);
         REQUIRE(point.tags[0].key == "location");
         REQUIRE(point.tags[0].value == "Krakow");
@@ -29,7 +29,7 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         bool success = parse_line(input, point);
 
         REQUIRE(success == true);
-        REQUIRE(point.measurement == "cpu");
+        REQUIRE(point.dataset == "cpu");
         REQUIRE(point.timestamp.empty() == true);
         REQUIRE(point.field_count == 1);
     }
@@ -46,7 +46,7 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         bool success = parse_line(input, point);
 
         REQUIRE(success == true);
-        REQUIRE(point.measurement == "disk");
+        REQUIRE(point.dataset == "disk");
         
         REQUIRE(point.tag_count == 2);
         REQUIRE(point.tags[0].key == "host");
@@ -82,7 +82,7 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         bool success = parse_line(input, point);
 
         REQUIRE(success == true);
-        REQUIRE(point.measurement == "cpu");
+        REQUIRE(point.dataset == "cpu");
         REQUIRE(point.field_count == 1);
         REQUIRE(point.timestamp == "1727034041000");
     }
@@ -92,7 +92,7 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         bool success = parse_line(input, point);
 
         REQUIRE(success == true);
-        REQUIRE(point.measurement == "cpu");
+        REQUIRE(point.dataset == "cpu");
         REQUIRE(point.field_count == 1);
         REQUIRE(point.fields[0].key == "usage");
         REQUIRE(point.fields[0].value == "99.9");
@@ -132,7 +132,7 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         bool success = parse_line(input, point);
 
         REQUIRE(success == true);
-        REQUIRE(point.measurement == "cpu");
+        REQUIRE(point.dataset == "cpu");
         REQUIRE(point.tag_count == 1);
         REQUIRE(point.tags[0].key == "host");
         REQUIRE(point.tags[0].value == "server\\ 01"); 
@@ -144,7 +144,7 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         bool success = parse_line(input, point);
 
         REQUIRE(success == true);
-        REQUIRE(point.measurement == "cpu");
+        REQUIRE(point.dataset == "cpu");
         REQUIRE(point.field_count == 1);
         REQUIRE(point.fields[0].value == "99.9");
     }
@@ -154,7 +154,7 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         bool success = parse_line(input, point);
 
         REQUIRE(success == true);
-        REQUIRE(point.measurement == "app_log");
+        REQUIRE(point.dataset == "app_log");
         REQUIRE(point.field_count == 1);
         REQUIRE(point.fields[0].key == "msg");
         REQUIRE(point.fields[0].value == "\"fatal error occurred\""); 
@@ -166,7 +166,7 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         bool success = parse_line(input, point);
 
         REQUIRE(success == true);
-        REQUIRE(point.measurement == "app_log");
+        REQUIRE(point.dataset == "app_log");
         REQUIRE(point.field_count == 1);
         REQUIRE(point.fields[0].key == "msg");
         REQUIRE(point.fields[0].value == "\"hello \\\"world\\\"\""); 
