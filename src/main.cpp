@@ -4,7 +4,7 @@
 #include <unordered_map>
 
 #include "db/parser.hpp"
-#include "db/mem_table.hpp"
+#include "db/engine.hpp"
 
 void print_data_point(const db::DataPoint &point) {
     std::cout << "Dataset: [" << point.dataset << "]\n";
@@ -21,17 +21,25 @@ void print_data_point(const db::DataPoint &point) {
 }
 
 int main() {
-    const char* input = "sensor,location=Nowy-Jork,versions=3.4 temperature=80.5,pressure=1024.1";
 
-    db::DataPoint point;
-    
-    if (!parse_line(input, point)) {
-        std::cerr << "PARSING ERROR\n";
-        return -1;
+    db::Engine engine;
+
+    const char* inputs[] = {
+        "sensor,location=Nowy-Jork,versions=3.4 temperature=80.5,pressure=1024.1",
+        "sensor,location=Krakow,versions=3.4 temperature=20.1,pressure=1013.2",
+        "cpu,host=server01 usage=42.5",
+    };
+
+    for (const char* input : inputs) {
+        db::DataPoint point;
+        if (!parse_line(input, point)) {
+            std::cerr << "PARSING ERROR\n";
+            return -1;
+        }
+        engine.insert(point);
     }
 
-    print_data_point(point);
-    
+    engine.print_mem_tables();
 
     return 0;
 }

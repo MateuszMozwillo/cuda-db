@@ -11,6 +11,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 add_library(db_core
     src/parser.cpp
     src/mem_table.cpp
+    src/engine.cpp
 )
 
 add_executable(gpu-db
