@@ -49,6 +49,8 @@ bool parse_line(const char* input, DataPoint& result) {
                     if (result.tags[result.tag_count].key.empty()) { ps = ERROR; break; }
                     start_ptr = current + 1;
                     ps = TAG_VALUE;
+                } else if (*current == ' ' || *current == ',') {
+                    ps = ERROR;
                 }
                 break;
 
@@ -68,6 +70,8 @@ bool parse_line(const char* input, DataPoint& result) {
                     
                     start_ptr = current + 1;
                     ps = DATA_KEY;
+                } else if (*current == '=') {
+                    ps = ERROR;
                 }
                 break;
 
@@ -78,13 +82,25 @@ bool parse_line(const char* input, DataPoint& result) {
                     if (result.fields[result.field_count].key.empty()) { ps = ERROR; break; }
                     start_ptr = current + 1;
                     ps = DATA_VALUE;
+                } else if (*current == ' ' || *current == ',') {
+                    ps = ERROR;
                 }
                 break;
 
             case DATA_VALUE:
                 if (*current == '"') {
-                    in_quotes = !in_quotes;
-                } 
+                    if (!in_quotes) {
+                        if (current != start_ptr) { ps = ERROR; break; }
+                        in_quotes = true;
+                    } else {
+                        const char next = *(current + 1);
+                        if (next != ',' && next != ' ' && next != '\n' && next != '\r' && next != '\0') {
+                            ps = ERROR;
+                            break;
+                        }
+                        in_quotes = false;
+                    }
+                }
                 else if (*current == ',' && !in_quotes) {
                     result.fields[result.field_count].value = std::string_view(start_ptr, current - start_ptr);
                     if (result.fields[result.field_count].value.empty()) { ps = ERROR; break; }

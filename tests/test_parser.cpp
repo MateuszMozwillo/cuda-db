@@ -224,7 +224,115 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         input += "\n";
 
         bool success = parse_line(input.c_str(), point);
-        
+
         REQUIRE(success == false);
+    }
+
+    SECTION("Reject unescaped space in tag key") {
+        const char* input = "cpu,ho st=a u=1\n";
+        bool success = parse_line(input, point);
+
+        REQUIRE(success == false);
+    }
+
+    SECTION("Reject unescaped comma in tag key") {
+        const char* input = "cpu,host,x=1 u=1\n";
+        bool success = parse_line(input, point);
+
+        REQUIRE(success == false);
+    }
+
+    SECTION("Reject unescaped equals sign in tag value") {
+        const char* input = "cpu,a=b=c u=1\n";
+        bool success = parse_line(input, point);
+
+        REQUIRE(success == false);
+    }
+
+    SECTION("Reject unescaped space in field key") {
+        const char* input = "cpu a b=1\n";
+        bool success = parse_line(input, point);
+
+        REQUIRE(success == false);
+    }
+
+    SECTION("Reject unescaped comma in field key") {
+        const char* input = "cpu a,b=1\n";
+        bool success = parse_line(input, point);
+
+        REQUIRE(success == false);
+    }
+
+    SECTION("Reject quote in the middle of unquoted field value") {
+        const char* input = "cpu u=ab\"c d\"\n";
+        bool success = parse_line(input, point);
+
+        REQUIRE(success == false);
+    }
+
+    SECTION("Reject characters after closing quote") {
+        const char* input = "cpu u=\"abc\"x\n";
+        bool success = parse_line(input, point);
+
+        REQUIRE(success == false);
+    }
+
+    SECTION("Reject characters after closing quote before next field") {
+        const char* input = "cpu u=\"abc\"x,v=1\n";
+        bool success = parse_line(input, point);
+
+        REQUIRE(success == false);
+    }
+
+    SECTION("Valid line with escaped space in tag key") {
+        const char* input = "cpu,ho\\ st=a u=1\n";
+        bool success = parse_line(input, point);
+
+        REQUIRE(success == true);
+        REQUIRE(point.tag_count == 1);
+        REQUIRE(point.tags[0].key == "ho\\ st");
+        REQUIRE(point.tags[0].value == "a");
+    }
+
+    SECTION("Valid line with escaped comma in tag key") {
+        const char* input = "cpu,host\\,x=1 u=1\n";
+        bool success = parse_line(input, point);
+
+        REQUIRE(success == true);
+        REQUIRE(point.tag_count == 1);
+        REQUIRE(point.tags[0].key == "host\\,x");
+        REQUIRE(point.tags[0].value == "1");
+    }
+
+    SECTION("Valid line with escaped equals sign in tag value") {
+        const char* input = "cpu,a=b\\=c u=1\n";
+        bool success = parse_line(input, point);
+
+        REQUIRE(success == true);
+        REQUIRE(point.tag_count == 1);
+        REQUIRE(point.tags[0].key == "a");
+        REQUIRE(point.tags[0].value == "b\\=c");
+    }
+
+    SECTION("Valid line with escaped space in field key") {
+        const char* input = "cpu a\\ b=1\n";
+        bool success = parse_line(input, point);
+
+        REQUIRE(success == true);
+        REQUIRE(point.field_count == 1);
+        REQUIRE(point.fields[0].key == "a\\ b");
+        REQUIRE(point.fields[0].value == "1");
+    }
+
+    SECTION("Valid quoted field followed by another field") {
+        const char* input = "cpu u=\"a b\",v=1 1727034041000\n";
+        bool success = parse_line(input, point);
+
+        REQUIRE(success == true);
+        REQUIRE(point.field_count == 2);
+        REQUIRE(point.fields[0].value == "\"a b\"");
+        REQUIRE(point.fields[1].key == "v");
+        REQUIRE(point.fields[1].value == "1");
+        REQUIRE(point.timestamp == "1727034041000");
     }
 }
