@@ -15,7 +15,7 @@ db::MemTable &Engine::get_mem_table(std::string_view dataset) {
 
 bool Engine::insert(const db::DataPoint &dp) {
     PreparedDp pd;
-    auto res = MemTable::prepare(dp, pd);
+    bool res = MemTable::prepare(dp, pd);
     if (res == false) {
         return false;
     }

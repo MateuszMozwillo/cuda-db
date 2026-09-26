@@ -2,16 +2,16 @@
 
 namespace db {
 
-u_int64_t MemTable::get_series_id(std::string_view tags) {
+std::pair<bool, u_int64_t> MemTable::get_series_id(std::string_view tags) {
 
     auto res = series_id_dict.find(tags);
     if (res != series_id_dict.end()) {
-        return res->second;
+        return std::make_pair(true, res->second);
     }
 
     std::string key(tags);
     series_id_dict.emplace(std::move(key), next_series_id);
-    return next_series_id++;
+    return std::make_pair(false, next_series_id++);
 }
 
 u_int32_t MemTable::get_field_id(std::string_view field_name) {
@@ -24,6 +24,17 @@ u_int32_t MemTable::get_field_id(std::string_view field_name) {
     field_id_dict.emplace(std::move(key), next_field_id);
     return next_field_id++;
 
+}
+
+uint32_t MemTable::get_tag_id(std::string_view tag) {
+    auto res = tag_id_dict.find(tag);
+    if (res != tag_id_dict.end()) {
+        return res->second;
+    }   
+    tag_to_series.emplace_back();
+    std::string key(tag);
+    tag_id_dict.emplace(std::move(key), next_tag_id);
+    return next_tag_id++;
 }
 
 std::string_view MemTable::get_tags(const db::DataPoint &dp) {
@@ -40,7 +51,15 @@ std::string_view MemTable::get_tags(const db::DataPoint &dp) {
 }
 
 void MemTable::commit(const db::DataPoint &dp, const db::PreparedDp &to_commit) {
-    u_int64_t series_id = get_series_id(to_commit.tags);
+    auto [found, series_id] = get_series_id(to_commit.tags);
+    if (found == false) {
+        for (size_t i = 0; i < dp.tag_count; ++i) {
+            std::string_view tag(dp.tags[i].key.data(),
+                  dp.tags[i].value.data() + dp.tags[i].value.size() - dp.tags[i].key.data());
+            tag_to_series[get_tag_id(tag)].push_back(series_id);
+        }
+    }
+
     for (size_t i = 0; i < dp.field_count; ++i) {
         col_series_id.push_back(series_id);
         col_field_id.push_back(get_field_id(dp.fields[i].key));
@@ -88,6 +107,16 @@ bool MemTable::prepare(const db::DataPoint &dp, db::PreparedDp &result) {
     }
 
     return true;
+}
+
+const std::vector<u_int64_t> &MemTable::series_for_tag(std::string_view tag) const {
+    static const std::vector<u_int64_t> empty;
+
+    auto res = tag_id_dict.find(tag);
+    if (res == tag_id_dict.end()) {
+        return empty;
+    }
+    return tag_to_series[res->second];
 }
 
 void MemTable::print_mem_table_columns() {

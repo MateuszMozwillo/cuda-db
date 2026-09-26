@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
 #include <string>
+#include <vector>
 #include "db/parser.hpp"
 #include "db/mem_table.hpp"
 
@@ -279,5 +280,70 @@ TEST_CASE("MemTable field ids", "[mem_table]") {
 
         REQUIRE(mem_table.row_count() == 300);
         REQUIRE(mem_table.field_ids()[299] == 300);
+    }
+}
+
+TEST_CASE("MemTable tag index", "[mem_table]") {
+    MemTable mem_table;
+
+    SECTION("Series with two tags is listed under both") {
+        REQUIRE(insert_line(mem_table, "sensor,location=Krakow,version=2 temperature=80.5 1\n") == true);
+
+        REQUIRE(mem_table.series_for_tag("location=Krakow") == std::vector<u_int64_t>{1});
+        REQUIRE(mem_table.series_for_tag("version=2") == std::vector<u_int64_t>{1});
+    }
+
+    SECTION("Repeated lines of the same series do not duplicate entries") {
+        REQUIRE(insert_line(mem_table, "sensor,location=Krakow temperature=80.5 1\n") == true);
+        REQUIRE(insert_line(mem_table, "sensor,location=Krakow temperature=81.0 2\n") == true);
+        REQUIRE(insert_line(mem_table, "sensor,location=Krakow temperature=82.0 3\n") == true);
+
+        REQUIRE(mem_table.series_for_tag("location=Krakow") == std::vector<u_int64_t>{1});
+    }
+
+    SECTION("Series sharing a tag are listed in ascending order") {
+        REQUIRE(insert_line(mem_table, "sensor,location=Krakow,version=1 temperature=80.5 1\n") == true);
+        REQUIRE(insert_line(mem_table, "sensor,location=Warsaw,version=1 temperature=81.0 2\n") == true);
+        REQUIRE(insert_line(mem_table, "sensor,location=Krakow,version=2 temperature=82.0 3\n") == true);
+
+        REQUIRE(mem_table.series_for_tag("location=Krakow") == std::vector<u_int64_t>{1, 3});
+        REQUIRE(mem_table.series_for_tag("location=Warsaw") == std::vector<u_int64_t>{2});
+        REQUIRE(mem_table.series_for_tag("version=1") == std::vector<u_int64_t>{1, 2});
+        REQUIRE(mem_table.series_for_tag("version=2") == std::vector<u_int64_t>{3});
+    }
+
+    SECTION("Tag value is part of the key") {
+        REQUIRE(insert_line(mem_table, "sensor,location=Krakow temperature=80.5 1\n") == true);
+        REQUIRE(insert_line(mem_table, "sensor,location=Warsaw temperature=81.0 2\n") == true);
+
+        REQUIRE(mem_table.series_for_tag("location=Krakow") == std::vector<u_int64_t>{1});
+        REQUIRE(mem_table.series_for_tag("location=Warsaw") == std::vector<u_int64_t>{2});
+        REQUIRE(mem_table.series_for_tag("location").empty() == true);
+    }
+
+    SECTION("Line without tags adds nothing to the index") {
+        REQUIRE(insert_line(mem_table, "sensor temperature=80.5 1\n") == true);
+
+        REQUIRE(mem_table.series_for_tag("").empty() == true);
+    }
+
+    SECTION("Unknown tag returns an empty list") {
+        REQUIRE(insert_line(mem_table, "sensor,location=Krakow temperature=80.5 1\n") == true);
+
+        REQUIRE(mem_table.series_for_tag("location=Gdansk").empty() == true);
+        REQUIRE(mem_table.series_for_tag("host=server01").empty() == true);
+    }
+
+    SECTION("Rejected line is not indexed") {
+        REQUIRE(insert_line(mem_table, "sensor,location=Krakow temperature=abc 1\n") == false);
+
+        REQUIRE(mem_table.series_for_tag("location=Krakow").empty() == true);
+    }
+
+    SECTION("Escaped space in tag value") {
+        REQUIRE(insert_line(mem_table, "sensor,location=New\\ York temperature=80.5 1\n") == true);
+
+        REQUIRE(mem_table.series_for_tag("location=New\\ York") == std::vector<u_int64_t>{1});
+        REQUIRE(mem_table.series_for_tag("location=New").empty() == true);
     }
 }
