@@ -29,7 +29,7 @@ struct DataPoint {
     }
 };
 
-enum ParserState {
+enum class ParserState {
     MEASUREMENT,
     TAG_KEY,
     TAG_VALUE,
