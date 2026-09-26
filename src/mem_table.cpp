@@ -14,7 +14,7 @@ u_int64_t MemTable::get_series_id(std::string_view tags) {
     return next_series_id++;
 }
 
-u_int64_t MemTable::get_field_id(std::string_view field_name) {
+u_int32_t MemTable::get_field_id(std::string_view field_name) {
     auto res = field_id_dict.find(field_name);
     if (res != field_id_dict.end()) {
         return res->second;
@@ -41,8 +41,7 @@ std::string_view MemTable::get_tags(const db::DataPoint &dp) {
 
 bool MemTable::insert(const db::DataPoint &dp) {
     const std::string_view tags = get_tags(dp);
-    const u_int64_t series_id = get_series_id(tags);
-
+    
     u_int64_t timestamp_as_int = 0;
 
     if (dp.timestamp.empty()) {
@@ -53,25 +52,33 @@ bool MemTable::insert(const db::DataPoint &dp) {
     } else {
         auto [ts_ptr, ts_ec] = std::from_chars(dp.timestamp.data(), dp.timestamp.data() + dp.timestamp.size(), timestamp_as_int);
 
-        if (ts_ec != std::errc()) {
+        if (ts_ec != std::errc() || ts_ptr != dp.timestamp.data() + dp.timestamp.size()) {
             return false;
         }
     }
 
+    std::array<double, MAX_FIELD_COUNT> parsed_fields;
+
     for (size_t i = 0; i < dp.field_count; ++i) {
         const auto &field = dp.fields[i];
-        u_int64_t field_id = get_field_id(field.key);
 
         double field_value_as_double = 0.0;
         auto [val_ptr, val_ec] = std::from_chars(field.value.data(), field.value.data() + field.value.size(), field_value_as_double);
 
-        if (val_ec != std::errc()) {
-            continue; 
+        if (val_ec != std::errc() || val_ptr != field.value.data() + field.value.size()) {
+            return false; 
         }
 
+        parsed_fields[i] = field_value_as_double;
+    }
+
+    const u_int64_t series_id = get_series_id(tags);
+
+    for (size_t i = 0; i < dp.field_count; ++i) {
+
         col_series_id.push_back(series_id);
-        col_field_id.push_back(field_id);
-        col_field.push_back(field_value_as_double);
+        col_field_id.push_back(get_field_id(dp.fields[i].key));
+        col_field.push_back(parsed_fields[i]);
         col_timestamp.push_back(timestamp_as_int);
     }
 

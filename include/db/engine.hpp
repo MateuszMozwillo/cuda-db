@@ -19,6 +19,12 @@ private:
 public:
     bool insert(const db::DataPoint &dp);
     void print_mem_tables();
+
+    size_t dataset_count() const { return mem_tables.size(); }
+    const db::MemTable *find_mem_table(std::string_view dataset) const {
+        auto res = dataset_dict.find(dataset);
+        return res != dataset_dict.end() ? &mem_tables[res->second] : nullptr;
+    }
 };
 
 }

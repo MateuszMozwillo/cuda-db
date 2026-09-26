@@ -39,6 +39,8 @@ FetchContent_MakeAvailable(Catch2)
 
 add_executable(unit_tests
     tests/test_parser.cpp
+    tests/test_mem_table.cpp
+    tests/test_engine.cpp
 )
 
 target_link_libraries(unit_tests PRIVATE db_core Catch2::Catch2WithMain)

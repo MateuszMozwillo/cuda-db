@@ -19,7 +19,7 @@ bool Engine::insert(const db::DataPoint &dp) {
 
 void Engine::print_mem_tables() {
     for (const auto &[dataset, idx] : dataset_dict) {
-        std::cout << "=== " << dataset << " ===\n";
+        std::cout << "[" << dataset << "]\n";
         mem_tables[idx].print_mem_table_columns();
     }
 }
