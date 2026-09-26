@@ -2,7 +2,7 @@
 
 namespace db {
 
-db::MemTable &Engine::get_mem_table(std::string_view dataset) {
+MemTable &Engine::get_mem_table(std::string_view dataset) {
     auto res = dataset_dict.find(dataset);
     if (res != dataset_dict.end()) {
         return mem_tables[res->second];
@@ -13,7 +13,7 @@ db::MemTable &Engine::get_mem_table(std::string_view dataset) {
     return mem_tables.emplace_back();
 }
 
-bool Engine::insert(const db::DataPoint &dp) {
+bool Engine::insert(const DataPoint &dp) {
     PreparedDp pd;
     bool res = MemTable::prepare(dp, pd);
     if (res == false) {

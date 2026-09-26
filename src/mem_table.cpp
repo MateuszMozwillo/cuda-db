@@ -37,7 +37,7 @@ std::uint32_t MemTable::get_tag_id(std::string_view tag) {
     return next_tag_id++;
 }
 
-std::string_view MemTable::get_tags(const db::DataPoint &dp) {
+std::string_view MemTable::get_tags(const DataPoint &dp) {
     if (dp.tag_count == 0) {
         return {};
     }
@@ -50,7 +50,7 @@ std::string_view MemTable::get_tags(const db::DataPoint &dp) {
     return std::string_view(start_ptr, end_ptr - start_ptr);
 }
 
-void MemTable::commit(const db::DataPoint &dp, const db::PreparedDp &to_commit) {
+void MemTable::commit(const DataPoint &dp, const PreparedDp &to_commit) {
     auto [found, series_id] = get_series_id(to_commit.tags);
     if (found == false) {
         for (size_t i = 0; i < dp.tag_count; ++i) {
@@ -68,7 +68,7 @@ void MemTable::commit(const db::DataPoint &dp, const db::PreparedDp &to_commit) 
     }
 }
 
-bool MemTable::prepare(const db::DataPoint &dp, db::PreparedDp &result) {
+bool MemTable::prepare(const DataPoint &dp, PreparedDp &result) {
     std::uint64_t timestamp_as_int = 0;
 
     if (dp.timestamp.empty()) {

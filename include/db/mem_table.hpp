@@ -41,7 +41,7 @@ private:
     std::vector<std::vector<std::uint64_t>> tag_to_series;
 
     std::pair<bool, std::uint64_t> get_series_id(std::string_view tags);
-    static std::string_view get_tags(const db::DataPoint &dp);
+    static std::string_view get_tags(const DataPoint &dp);
     std::uint32_t get_tag_id(std::string_view tag);
 
     std::uint32_t get_field_id(std::string_view field_name);
@@ -52,8 +52,8 @@ private:
     std::vector<std::uint64_t> col_timestamp;
 
 public:
-    static bool prepare(const db::DataPoint &dp, PreparedDp &result);
-    void commit(const db::DataPoint &dp, const db::PreparedDp &pd);
+    static bool prepare(const DataPoint &dp, PreparedDp &result);
+    void commit(const DataPoint &dp, const PreparedDp &pd);
     void print_mem_table_columns();
 
     size_t row_count() const { return col_field.size(); }
