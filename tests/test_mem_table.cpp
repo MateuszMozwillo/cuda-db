@@ -9,13 +9,69 @@ using namespace db;
 static bool insert_line(MemTable &mem_table, const char* input) {
     DataPoint point;
     REQUIRE(parse_line(input, point) == true);
-    return mem_table.insert(point);
+
+    PreparedDp prepared;
+    if (!MemTable::prepare(point, prepared)) {
+        return false;
+    }
+    mem_table.commit(point, prepared);
+    return true;
 }
 
 static u_int64_t now_ns() {
     return std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::system_clock::now().time_since_epoch()
     ).count();
+}
+
+TEST_CASE("MemTable prepare", "[mem_table]") {
+    DataPoint point;
+    PreparedDp prepared;
+
+    SECTION("Valid line fills tags, timestamp and values") {
+        REQUIRE(parse_line("sensor,location=Krakow,version=2 temperature=80.5,pressure=1024.1 1727034041000\n", point) == true);
+
+        bool success = MemTable::prepare(point, prepared);
+
+        REQUIRE(success == true);
+        REQUIRE(prepared.tags == "location=Krakow,version=2");
+        REQUIRE(prepared.timestamp == 1727034041000);
+        REQUIRE(prepared.parsed_fields[0] == 80.5);
+        REQUIRE(prepared.parsed_fields[1] == 1024.1);
+    }
+
+    SECTION("Line without tags has empty tags") {
+        REQUIRE(parse_line("sensor temperature=80.5 1\n", point) == true);
+
+        bool success = MemTable::prepare(point, prepared);
+
+        REQUIRE(success == true);
+        REQUIRE(prepared.tags.empty() == true);
+    }
+
+    SECTION("Missing timestamp uses current time") {
+        REQUIRE(parse_line("cpu usage=99.9\n", point) == true);
+
+        u_int64_t before = now_ns();
+        bool success = MemTable::prepare(point, prepared);
+        u_int64_t after = now_ns();
+
+        REQUIRE(success == true);
+        REQUIRE(prepared.timestamp >= before);
+        REQUIRE(prepared.timestamp <= after);
+    }
+
+    SECTION("Reject invalid timestamp") {
+        REQUIRE(parse_line("cpu usage=99.9 123abc\n", point) == true);
+
+        REQUIRE(MemTable::prepare(point, prepared) == false);
+    }
+
+    SECTION("Reject invalid field value") {
+        REQUIRE(parse_line("cpu usage=99.9,load=12abc 1\n", point) == true);
+
+        REQUIRE(MemTable::prepare(point, prepared) == false);
+    }
 }
 
 TEST_CASE("MemTable insert", "[mem_table]") {

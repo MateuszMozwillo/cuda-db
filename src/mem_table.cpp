@@ -39,9 +39,17 @@ std::string_view MemTable::get_tags(const db::DataPoint &dp) {
     return std::string_view(start_ptr, end_ptr - start_ptr);
 }
 
-bool MemTable::insert(const db::DataPoint &dp) {
-    const std::string_view tags = get_tags(dp);
-    
+void MemTable::commit(const db::DataPoint &dp, const db::PreparedDp &to_commit) {
+    u_int64_t series_id = get_series_id(to_commit.tags);
+    for (size_t i = 0; i < dp.field_count; ++i) {
+        col_series_id.push_back(series_id);
+        col_field_id.push_back(get_field_id(dp.fields[i].key));
+        col_field.push_back(to_commit.parsed_fields[i]);
+        col_timestamp.push_back(to_commit.timestamp);
+    }
+}
+
+bool MemTable::prepare(const db::DataPoint &dp, db::PreparedDp &result) {
     u_int64_t timestamp_as_int = 0;
 
     if (dp.timestamp.empty()) {
@@ -72,14 +80,11 @@ bool MemTable::insert(const db::DataPoint &dp) {
         parsed_fields[i] = field_value_as_double;
     }
 
-    const u_int64_t series_id = get_series_id(tags);
+    result.timestamp = timestamp_as_int;
+    result.tags = get_tags(dp);
 
     for (size_t i = 0; i < dp.field_count; ++i) {
-
-        col_series_id.push_back(series_id);
-        col_field_id.push_back(get_field_id(dp.fields[i].key));
-        col_field.push_back(parsed_fields[i]);
-        col_timestamp.push_back(timestamp_as_int);
+        result.parsed_fields[i] = parsed_fields[i];
     }
 
     return true;

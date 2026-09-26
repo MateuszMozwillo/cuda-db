@@ -19,6 +19,13 @@ struct StringHash {
     }
 };
 
+struct PreparedDp {
+    std::string_view tags;
+    std::array<double, MAX_FIELD_COUNT> parsed_fields;
+    u_int64_t timestamp;
+};
+
+
 class MemTable {
 private:
     std::unordered_map<std::string, u_int64_t, StringHash, std::equal_to<>> series_id_dict;
@@ -28,7 +35,7 @@ private:
     u_int32_t next_field_id = 1;
 
     u_int64_t get_series_id(std::string_view tags);
-    std::string_view get_tags(const db::DataPoint &dp);
+    static std::string_view get_tags(const db::DataPoint &dp);
 
     u_int32_t get_field_id(std::string_view field_name);
 
@@ -38,7 +45,8 @@ private:
     std::vector<u_int64_t> col_timestamp;
 
 public:
-    bool insert(const db::DataPoint &dp);
+    static bool prepare(const db::DataPoint &dp, PreparedDp &result);
+    void commit(const db::DataPoint &dp, const db::PreparedDp &pd);
     void print_mem_table_columns();
 
     size_t row_count() const { return col_field.size(); }
