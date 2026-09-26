@@ -13,7 +13,7 @@ add_library(db_core
     src/mem_table.cpp
     src/engine.cpp
     src/query.cpp
-    src/cpu_execturor.cpp
+    src/cpu_executor.cpp
 )
 
 add_executable(gpu-db

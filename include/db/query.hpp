@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <limits>
@@ -14,7 +15,7 @@ enum class OperationType {
 };
 
 struct AggState {
-    u_int64_t count = 0;
+    std::uint64_t count = 0;
     double sum = 0.0;
     double min = std::numeric_limits<double>::infinity();
     double max = -std::numeric_limits<double>::infinity();

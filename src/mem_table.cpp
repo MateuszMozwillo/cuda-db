@@ -2,7 +2,7 @@
 
 namespace db {
 
-std::pair<bool, u_int64_t> MemTable::get_series_id(std::string_view tags) {
+std::pair<bool, std::uint64_t> MemTable::get_series_id(std::string_view tags) {
 
     auto res = series_id_dict.find(tags);
     if (res != series_id_dict.end()) {
@@ -14,7 +14,7 @@ std::pair<bool, u_int64_t> MemTable::get_series_id(std::string_view tags) {
     return std::make_pair(false, next_series_id++);
 }
 
-u_int32_t MemTable::get_field_id(std::string_view field_name) {
+std::uint32_t MemTable::get_field_id(std::string_view field_name) {
     auto res = field_id_dict.find(field_name);
     if (res != field_id_dict.end()) {
         return res->second;
@@ -26,7 +26,7 @@ u_int32_t MemTable::get_field_id(std::string_view field_name) {
 
 }
 
-uint32_t MemTable::get_tag_id(std::string_view tag) {
+std::uint32_t MemTable::get_tag_id(std::string_view tag) {
     auto res = tag_id_dict.find(tag);
     if (res != tag_id_dict.end()) {
         return res->second;
@@ -69,7 +69,7 @@ void MemTable::commit(const db::DataPoint &dp, const db::PreparedDp &to_commit) 
 }
 
 bool MemTable::prepare(const db::DataPoint &dp, db::PreparedDp &result) {
-    u_int64_t timestamp_as_int = 0;
+    std::uint64_t timestamp_as_int = 0;
 
     if (dp.timestamp.empty()) {
         auto now = std::chrono::system_clock::now();
@@ -109,8 +109,8 @@ bool MemTable::prepare(const db::DataPoint &dp, db::PreparedDp &result) {
     return true;
 }
 
-const std::vector<u_int64_t> &MemTable::series_for_tag(std::string_view tag) const {
-    static const std::vector<u_int64_t> empty;
+const std::vector<std::uint64_t> &MemTable::series_for_tag(std::string_view tag) const {
+    static const std::vector<std::uint64_t> empty;
 
     auto res = tag_id_dict.find(tag);
     if (res == tag_id_dict.end()) {
