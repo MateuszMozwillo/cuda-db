@@ -12,6 +12,8 @@ add_library(db_core
     src/parser.cpp
     src/mem_table.cpp
     src/engine.cpp
+    src/query.cpp
+    src/cpu_execturor.cpp
 )
 
 add_executable(gpu-db
