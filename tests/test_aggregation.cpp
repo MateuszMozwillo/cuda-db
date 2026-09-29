@@ -36,7 +36,7 @@ TEST_CASE("AggState update", "[aggregation]") {
         REQUIRE(state.max == -INF);
     }
 
-    SECTION("Single value sets min and max to that value") {
+    SECTION("Single value") {
         AggState state = state_of({42.5});
 
         REQUIRE(state.count == 1);
@@ -106,7 +106,7 @@ TEST_CASE("AggState update", "[aggregation]") {
         REQUIRE(state.max == highest);
     }
 
-    SECTION("Smallest positive values are not treated as zero") {
+    SECTION("Smallest positive subnormal value") {
         double tiny = std::numeric_limits<double>::denorm_min();
         AggState state = state_of({tiny});
 
@@ -115,7 +115,7 @@ TEST_CASE("AggState update", "[aggregation]") {
         REQUIRE(state.sum == tiny);
     }
 
-    SECTION("Sum overflows to infinity for huge values") {
+    SECTION("Two maximum finite values") {
         double highest = std::numeric_limits<double>::max();
         AggState state = state_of({highest, highest});
 
@@ -124,7 +124,7 @@ TEST_CASE("AggState update", "[aggregation]") {
         REQUIRE(state.max == highest);
     }
 
-    SECTION("Floating point sum is not exact") {
+    SECTION("0.1 added ten times") {
         AggState state;
         for (int i = 0; i < 10; ++i) {
             state.update(0.1);
@@ -136,14 +136,14 @@ TEST_CASE("AggState update", "[aggregation]") {
 }
 
 TEST_CASE("AggState merge", "[aggregation]") {
-    SECTION("Empty merged with empty stays empty") {
+    SECTION("Empty with empty") {
         AggState a;
         a.merge(AggState{});
 
         require_same(a, AggState{});
     }
 
-    SECTION("Merging empty into a state changes nothing") {
+    SECTION("Empty merged into a state") {
         AggState a = state_of({1.0, -2.0, 3.0});
         AggState expected = a;
 
@@ -152,7 +152,7 @@ TEST_CASE("AggState merge", "[aggregation]") {
         require_same(a, expected);
     }
 
-    SECTION("Merging a state into empty gives that state") {
+    SECTION("State merged into empty") {
         AggState a;
         AggState b = state_of({1.0, -2.0, 3.0});
 
@@ -161,7 +161,7 @@ TEST_CASE("AggState merge", "[aggregation]") {
         require_same(a, b);
     }
 
-    SECTION("Merge gives the same result as updating with all values") {
+    SECTION("Two states with three values each") {
         AggState a = state_of({4.0, -8.0, 15.0});
         AggState b = state_of({16.0, 23.0, -42.0});
 
@@ -170,7 +170,7 @@ TEST_CASE("AggState merge", "[aggregation]") {
         require_same(a, state_of({4.0, -8.0, 15.0, 16.0, 23.0, -42.0}));
     }
 
-    SECTION("Merge is commutative") {
+    SECTION("Two states merged in both orders") {
         AggState a = state_of({1.0, 5.0});
         AggState b = state_of({-3.0, 9.0, 2.0});
 
@@ -182,7 +182,7 @@ TEST_CASE("AggState merge", "[aggregation]") {
         require_same(ab, ba);
     }
 
-    SECTION("Merge is associative") {
+    SECTION("Three states merged in two groupings") {
         AggState a = state_of({1.0, 2.0});
         AggState b = state_of({-7.0});
         AggState c = state_of({100.0, -50.0});
@@ -199,7 +199,7 @@ TEST_CASE("AggState merge", "[aggregation]") {
         require_same(left, right);
     }
 
-    SECTION("Merging many single value states") {
+    SECTION("101 single value states") {
         std::vector<double> values;
         AggState merged;
         for (int i = -50; i <= 50; ++i) {
@@ -214,7 +214,7 @@ TEST_CASE("AggState merge", "[aggregation]") {
         REQUIRE(merged.max == 50.0);
     }
 
-    SECTION("Merging a state with itself") {
+    SECTION("State merged with itself") {
         AggState a = state_of({2.0, -4.0, 6.0});
 
         a.merge(a);
@@ -225,7 +225,7 @@ TEST_CASE("AggState merge", "[aggregation]") {
         REQUIRE(a.max == 6.0);
     }
 
-    SECTION("Merging states with only negative values") {
+    SECTION("States with only negative values") {
         AggState a = state_of({-10.0, -20.0});
         AggState b = state_of({-5.0});
 
@@ -237,14 +237,14 @@ TEST_CASE("AggState merge", "[aggregation]") {
 }
 
 TEST_CASE("finalize", "[aggregation]") {
-    SECTION("COUNT of empty state is zero") {
+    SECTION("COUNT of empty state") {
         std::optional<double> result = finalize(AggState{}, OperationType::COUNT);
 
         REQUIRE(result.has_value());
         REQUIRE(*result == 0.0);
     }
 
-    SECTION("MIN, MAX and AVG of empty state have no value") {
+    SECTION("MIN, MAX and AVG of empty state") {
         REQUIRE(finalize(AggState{}, OperationType::MIN) == std::nullopt);
         REQUIRE(finalize(AggState{}, OperationType::MAX) == std::nullopt);
         REQUIRE(finalize(AggState{}, OperationType::AVG) == std::nullopt);
@@ -268,13 +268,13 @@ TEST_CASE("finalize", "[aggregation]") {
         REQUIRE(finalize(state, OperationType::AVG) == 30.0);
     }
 
-    SECTION("AVG that is not an integer") {
+    SECTION("AVG of 1 and 2") {
         AggState state = state_of({1.0, 2.0});
 
         REQUIRE(finalize(state, OperationType::AVG) == 1.5);
     }
 
-    SECTION("AVG of values that cancel out is zero") {
+    SECTION("AVG of values that cancel out") {
         AggState state = state_of({-5.0, 5.0});
 
         REQUIRE(finalize(state, OperationType::AVG) == 0.0);
@@ -288,7 +288,7 @@ TEST_CASE("finalize", "[aggregation]") {
         REQUIRE(*result == Catch::Approx(4.0 / 3.0));
     }
 
-    SECTION("AVG of merged states weights by count, not by state") {
+    SECTION("AVG of merged states of different sizes") {
         AggState a = state_of({10.0});
         AggState b = state_of({20.0, 20.0, 20.0});
 
@@ -297,7 +297,7 @@ TEST_CASE("finalize", "[aggregation]") {
         REQUIRE(finalize(a, OperationType::AVG) == 17.5);
     }
 
-    SECTION("Unknown operation type has no value") {
+    SECTION("Unknown operation type") {
         AggState state = state_of({1.0});
         OperationType unknown = static_cast<OperationType>(42);
 

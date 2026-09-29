@@ -29,7 +29,7 @@ TEST_CASE("MemTable prepare", "[mem_table]") {
     DataPoint point;
     PreparedDp prepared;
 
-    SECTION("Valid line fills tags, timestamp and values") {
+    SECTION("Line with tags, two fields and timestamp") {
         REQUIRE(parse_line("sensor,location=Krakow,version=2 temperature=80.5,pressure=1024.1 1727034041000\n", point) == true);
 
         bool success = MemTable::prepare(point, prepared);
@@ -41,7 +41,7 @@ TEST_CASE("MemTable prepare", "[mem_table]") {
         REQUIRE(prepared.parsed_fields[1] == 1024.1);
     }
 
-    SECTION("Line without tags has empty tags") {
+    SECTION("Line without tags") {
         REQUIRE(parse_line("sensor temperature=80.5 1\n", point) == true);
 
         bool success = MemTable::prepare(point, prepared);
@@ -50,7 +50,7 @@ TEST_CASE("MemTable prepare", "[mem_table]") {
         REQUIRE(prepared.tags.empty() == true);
     }
 
-    SECTION("Missing timestamp uses current time") {
+    SECTION("Line without timestamp") {
         REQUIRE(parse_line("cpu usage=99.9\n", point) == true);
 
         std::uint64_t before = now_ns();
@@ -62,13 +62,13 @@ TEST_CASE("MemTable prepare", "[mem_table]") {
         REQUIRE(prepared.timestamp <= after);
     }
 
-    SECTION("Reject invalid timestamp") {
+    SECTION("Timestamp with trailing garbage") {
         REQUIRE(parse_line("cpu usage=99.9 123abc\n", point) == true);
 
         REQUIRE(MemTable::prepare(point, prepared) == false);
     }
 
-    SECTION("Reject invalid field value") {
+    SECTION("Field value with trailing garbage") {
         REQUIRE(parse_line("cpu usage=99.9,load=12abc 1\n", point) == true);
 
         REQUIRE(MemTable::prepare(point, prepared) == false);
@@ -78,7 +78,7 @@ TEST_CASE("MemTable prepare", "[mem_table]") {
 TEST_CASE("MemTable insert", "[mem_table]") {
     MemTable mem_table;
 
-    SECTION("Single field line") {
+    SECTION("Line with a single field") {
         bool success = insert_line(mem_table, "sensor,location=Krakow temperature=80.5 1727034041000\n");
 
         REQUIRE(success == true);
@@ -89,7 +89,7 @@ TEST_CASE("MemTable insert", "[mem_table]") {
         REQUIRE(mem_table.timestamps()[0] == 1727034041000);
     }
 
-    SECTION("Multiple fields are stored in order with shared series and timestamp") {
+    SECTION("Line with three fields") {
         bool success = insert_line(mem_table, "sensor,location=Krakow temperature=80.5,pressure=1024.1,humidity=40.2 1727034041000\n");
 
         REQUIRE(success == true);
@@ -109,7 +109,7 @@ TEST_CASE("MemTable insert", "[mem_table]") {
         }
     }
 
-    SECTION("Missing timestamp uses current time") {
+    SECTION("Line without timestamp") {
         std::uint64_t before = now_ns();
         bool success = insert_line(mem_table, "cpu,host=server01 usage=99.9\n");
         std::uint64_t after = now_ns();
@@ -127,70 +127,70 @@ TEST_CASE("MemTable insert", "[mem_table]") {
         REQUIRE(mem_table.field_values()[0] == -12.5);
     }
 
-    SECTION("Reject timestamp with trailing garbage") {
+    SECTION("Timestamp with trailing garbage") {
         bool success = insert_line(mem_table, "cpu usage=99.9 123abc\n");
 
         REQUIRE(success == false);
         REQUIRE(mem_table.row_count() == 0);
     }
 
-    SECTION("Reject non-numeric timestamp") {
+    SECTION("Non-numeric timestamp") {
         bool success = insert_line(mem_table, "cpu usage=99.9 abc\n");
 
         REQUIRE(success == false);
         REQUIRE(mem_table.row_count() == 0);
     }
 
-    SECTION("Reject timestamp overflowing u_int64") {
+    SECTION("Timestamp larger than uint64") {
         bool success = insert_line(mem_table, "cpu usage=99.9 99999999999999999999999\n");
 
         REQUIRE(success == false);
         REQUIRE(mem_table.row_count() == 0);
     }
 
-    SECTION("Reject maximum u_int64 timestamp, it is reserved") {
+    SECTION("Maximum uint64 timestamp") {
         bool success = insert_line(mem_table, "cpu usage=99.9 18446744073709551615\n");
 
         REQUIRE(success == false);
         REQUIRE(mem_table.row_count() == 0);
     }
 
-    SECTION("Accept timestamp one below the maximum") {
+    SECTION("Timestamp one below the maximum") {
         bool success = insert_line(mem_table, "cpu usage=99.9 18446744073709551614\n");
 
         REQUIRE(success == true);
         REQUIRE(mem_table.timestamps()[0] == 18446744073709551614ULL);
     }
 
-    SECTION("Reject field value with trailing garbage") {
+    SECTION("Field value with trailing garbage") {
         bool success = insert_line(mem_table, "cpu usage=12abc\n");
 
         REQUIRE(success == false);
         REQUIRE(mem_table.row_count() == 0);
     }
 
-    SECTION("Reject non-numeric field values") {
+    SECTION("Non-numeric field values") {
         REQUIRE(insert_line(mem_table, "cpu usage=abc\n") == false);
         REQUIRE(insert_line(mem_table, "app_log msg=\"hello\"\n") == false);
         REQUIRE(insert_line(mem_table, "cpu ok=true\n") == false);
         REQUIRE(mem_table.row_count() == 0);
     }
 
-    SECTION("Reject integer field with i suffix (not supported yet)") {
+    SECTION("Integer field with i suffix") {
         bool success = insert_line(mem_table, "cpu usage_user=58i\n");
 
         REQUIRE(success == false);
         REQUIRE(mem_table.row_count() == 0);
     }
 
-    SECTION("One invalid field rejects the whole line") {
+    SECTION("One invalid field among valid ones") {
         bool success = insert_line(mem_table, "sensor temperature=80.5,pressure=abc,humidity=40.2 1727034041000\n");
 
         REQUIRE(success == false);
         REQUIRE(mem_table.row_count() == 0);
     }
 
-    SECTION("Rejected line does not allocate series or field ids") {
+    SECTION("Invalid lines followed by a valid line") {
         REQUIRE(insert_line(mem_table, "sensor,location=Warsaw temperature=80.5,pressure=abc 1727034041000\n") == false);
         REQUIRE(insert_line(mem_table, "sensor,location=Gdansk humidity=40.2 abc\n") == false);
 
@@ -206,7 +206,7 @@ TEST_CASE("MemTable insert", "[mem_table]") {
 TEST_CASE("MemTable series ids", "[mem_table]") {
     MemTable mem_table;
 
-    SECTION("Same tags give the same series id") {
+    SECTION("Two lines with the same tags") {
         REQUIRE(insert_line(mem_table, "sensor,location=Krakow temperature=80.5 1\n") == true);
         REQUIRE(insert_line(mem_table, "sensor,location=Krakow temperature=81.0 2\n") == true);
 
@@ -214,7 +214,7 @@ TEST_CASE("MemTable series ids", "[mem_table]") {
         REQUIRE(mem_table.series_ids()[1] == 1);
     }
 
-    SECTION("Different tag values give consecutive series ids") {
+    SECTION("Lines with different tag values") {
         REQUIRE(insert_line(mem_table, "sensor,location=Krakow temperature=80.5 1\n") == true);
         REQUIRE(insert_line(mem_table, "sensor,location=Warsaw temperature=81.0 2\n") == true);
         REQUIRE(insert_line(mem_table, "sensor,location=Gdansk temperature=82.0 3\n") == true);
@@ -226,7 +226,7 @@ TEST_CASE("MemTable series ids", "[mem_table]") {
         REQUIRE(mem_table.series_ids()[3] == 2);
     }
 
-    SECTION("Line without tags gets a stable series id") {
+    SECTION("Lines without tags mixed with tagged lines") {
         REQUIRE(insert_line(mem_table, "sensor temperature=80.5 1\n") == true);
         REQUIRE(insert_line(mem_table, "sensor,location=Krakow temperature=81.0 2\n") == true);
         REQUIRE(insert_line(mem_table, "sensor temperature=82.0 3\n") == true);
@@ -236,7 +236,7 @@ TEST_CASE("MemTable series ids", "[mem_table]") {
         REQUIRE(mem_table.series_ids()[2] == 1);
     }
 
-    SECTION("Additional tag creates a new series") {
+    SECTION("Same tags plus one additional tag") {
         REQUIRE(insert_line(mem_table, "sensor,location=Krakow temperature=80.5 1\n") == true);
         REQUIRE(insert_line(mem_table, "sensor,location=Krakow,version=2 temperature=81.0 2\n") == true);
 
@@ -254,7 +254,7 @@ TEST_CASE("MemTable series ids", "[mem_table]") {
         REQUIRE(mem_table.series_ids()[2] == 2);
     }
 
-    SECTION("Tag order matters (current behaviour, update when tags are sorted)") {
+    SECTION("Same tags in different order") {
         REQUIRE(insert_line(mem_table, "sensor,a=1,b=2 temperature=80.5 1\n") == true);
         REQUIRE(insert_line(mem_table, "sensor,b=2,a=1 temperature=81.0 2\n") == true);
 
@@ -265,7 +265,7 @@ TEST_CASE("MemTable series ids", "[mem_table]") {
 TEST_CASE("MemTable field ids", "[mem_table]") {
     MemTable mem_table;
 
-    SECTION("Same field name gives the same id across lines and series") {
+    SECTION("Same field names in different lines and series") {
         REQUIRE(insert_line(mem_table, "sensor,location=Krakow temperature=80.5,pressure=1024.1 1\n") == true);
         REQUIRE(insert_line(mem_table, "sensor,location=Warsaw pressure=1013.2,temperature=20.1 2\n") == true);
 
@@ -275,7 +275,7 @@ TEST_CASE("MemTable field ids", "[mem_table]") {
         REQUIRE(mem_table.field_ids()[3] == 1);
     }
 
-    SECTION("New field names get consecutive ids") {
+    SECTION("New field names in consecutive lines") {
         REQUIRE(insert_line(mem_table, "sensor temperature=80.5 1\n") == true);
         REQUIRE(insert_line(mem_table, "sensor humidity=40.2 2\n") == true);
         REQUIRE(insert_line(mem_table, "sensor wind=3.5,temperature=81.0 3\n") == true);
@@ -286,7 +286,7 @@ TEST_CASE("MemTable field ids", "[mem_table]") {
         REQUIRE(mem_table.field_ids()[3] == 1);
     }
 
-    SECTION("Many distinct field names do not wrap around") {
+    SECTION("300 distinct field names") {
         for (unsigned int i = 0; i < 300; ++i) {
             std::string input = "sensor field" + std::to_string(i) + "=1.0 1\n";
             REQUIRE(insert_line(mem_table, input.c_str()) == true);
@@ -300,14 +300,14 @@ TEST_CASE("MemTable field ids", "[mem_table]") {
 TEST_CASE("MemTable tag index", "[mem_table]") {
     MemTable mem_table;
 
-    SECTION("Series with two tags is listed under both") {
+    SECTION("Series with two tags") {
         REQUIRE(insert_line(mem_table, "sensor,location=Krakow,version=2 temperature=80.5 1\n") == true);
 
         REQUIRE(mem_table.series_for_tag("location=Krakow") == std::vector<std::uint32_t>{1});
         REQUIRE(mem_table.series_for_tag("version=2") == std::vector<std::uint32_t>{1});
     }
 
-    SECTION("Repeated lines of the same series do not duplicate entries") {
+    SECTION("Repeated lines of the same series") {
         REQUIRE(insert_line(mem_table, "sensor,location=Krakow temperature=80.5 1\n") == true);
         REQUIRE(insert_line(mem_table, "sensor,location=Krakow temperature=81.0 2\n") == true);
         REQUIRE(insert_line(mem_table, "sensor,location=Krakow temperature=82.0 3\n") == true);
@@ -315,7 +315,7 @@ TEST_CASE("MemTable tag index", "[mem_table]") {
         REQUIRE(mem_table.series_for_tag("location=Krakow") == std::vector<std::uint32_t>{1});
     }
 
-    SECTION("Series sharing a tag are listed in ascending order") {
+    SECTION("Several series sharing tags") {
         REQUIRE(insert_line(mem_table, "sensor,location=Krakow,version=1 temperature=80.5 1\n") == true);
         REQUIRE(insert_line(mem_table, "sensor,location=Warsaw,version=1 temperature=81.0 2\n") == true);
         REQUIRE(insert_line(mem_table, "sensor,location=Krakow,version=2 temperature=82.0 3\n") == true);
@@ -326,7 +326,7 @@ TEST_CASE("MemTable tag index", "[mem_table]") {
         REQUIRE(mem_table.series_for_tag("version=2") == std::vector<std::uint32_t>{3});
     }
 
-    SECTION("Tag value is part of the key") {
+    SECTION("Same tag key with different values") {
         REQUIRE(insert_line(mem_table, "sensor,location=Krakow temperature=80.5 1\n") == true);
         REQUIRE(insert_line(mem_table, "sensor,location=Warsaw temperature=81.0 2\n") == true);
 
@@ -335,20 +335,20 @@ TEST_CASE("MemTable tag index", "[mem_table]") {
         REQUIRE(mem_table.series_for_tag("location").empty() == true);
     }
 
-    SECTION("Line without tags adds nothing to the index") {
+    SECTION("Line without tags") {
         REQUIRE(insert_line(mem_table, "sensor temperature=80.5 1\n") == true);
 
         REQUIRE(mem_table.series_for_tag("").empty() == true);
     }
 
-    SECTION("Unknown tag returns an empty list") {
+    SECTION("Tag that was never inserted") {
         REQUIRE(insert_line(mem_table, "sensor,location=Krakow temperature=80.5 1\n") == true);
 
         REQUIRE(mem_table.series_for_tag("location=Gdansk").empty() == true);
         REQUIRE(mem_table.series_for_tag("host=server01").empty() == true);
     }
 
-    SECTION("Rejected line is not indexed") {
+    SECTION("Rejected line with a new tag") {
         REQUIRE(insert_line(mem_table, "sensor,location=Krakow temperature=abc 1\n") == false);
 
         REQUIRE(mem_table.series_for_tag("location=Krakow").empty() == true);

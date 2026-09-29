@@ -7,14 +7,8 @@
 #include <cmath>
 #include <optional>
 
+#include "db/host_device.hpp"
 #include "db/mem_table.hpp"
-
-#ifdef __CUDACC__
-#define DB_HOST_DEVICE __host__ __device__
-#else
-#define DB_HOST_DEVICE
-#endif
-
 
 namespace db {
 

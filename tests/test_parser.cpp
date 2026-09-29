@@ -7,7 +7,7 @@ using namespace db;
 TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
     DataPoint point;
 
-    SECTION("Valid line with all components") {
+    SECTION("Line with dataset, tag, field and timestamp") {
         const char* input = "sensor,location=Krakow temperature=80.5 1727034041000\n";
         bool success = parse_line(input, point);
 
@@ -24,7 +24,7 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         REQUIRE(point.timestamp == "1727034041000");
     }
 
-    SECTION("Valid line without timestamp") {
+    SECTION("Line without timestamp") {
         const char* input = "cpu,host=server01 usage=99.9\n";
         bool success = parse_line(input, point);
 
@@ -34,14 +34,14 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         REQUIRE(point.field_count == 1);
     }
 
-    SECTION("Malformed line without fields") {
+    SECTION("Text without separators") {
         const char* input = "random_data_that_wont_work\n";
         bool success = parse_line(input, point);
 
         REQUIRE(success == false);
     }
 
-    SECTION("Multiple tags and fields") {
+    SECTION("Line with two tags and two fields") {
         const char* input = "disk,host=server01,region=eu-central usage=85.5,free_gb=15.2 1727034041000\n";
         bool success = parse_line(input, point);
 
@@ -63,21 +63,21 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         REQUIRE(point.timestamp == "1727034041000");
     }
 
-    SECTION("Reject empty line") {
+    SECTION("Empty line") {
         const char* input = "\n";
         bool success = parse_line(input, point);
 
         REQUIRE(success == false);
     }
 
-    SECTION("Reject missing field value") {
+    SECTION("Field without value") {
         const char* input = "cpu,host=server01 usage=\n";
         bool success = parse_line(input, point);
 
         REQUIRE(success == false);
     }
 
-    SECTION("Valid line with extra spaces before timestamp") {
+    SECTION("Several spaces before timestamp") {
         const char* input = "cpu usage=42.0    1727034041000\n";
         bool success = parse_line(input, point);
 
@@ -87,7 +87,7 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         REQUIRE(point.timestamp == "1727034041000");
     }
 
-    SECTION("Valid line with CRLF (Windows line endings)") {
+    SECTION("Line ending with CRLF") {
         const char* input = "cpu,host=server01 usage=99.9\r\n";
         bool success = parse_line(input, point);
 
@@ -99,35 +99,35 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         REQUIRE(point.timestamp.empty() == true);
     }
 
-    SECTION("Reject line with only measurement (no fields, no tags)") {
+    SECTION("Dataset name only") {
         const char* input = "cpu\n";
         bool success = parse_line(input, point);
 
         REQUIRE(success == false);
     }
 
-    SECTION("Reject line with missing measurement name") {
+    SECTION("Missing dataset name") {
         const char* input = ",host=server01 usage=99.9\n";
         bool success = parse_line(input, point);
 
         REQUIRE(success == false);
     }
 
-    SECTION("Reject line with missing field key") {
+    SECTION("Field without key") {
         const char* input = "cpu,host=server01 =99.9\n";
         bool success = parse_line(input, point);
 
         REQUIRE(success == false);
     }
 
-    SECTION("Reject line with trailing comma in tags") {
+    SECTION("Trailing comma after tags") {
         const char* input = "cpu,host=server01, usage=99.9\n";
         bool success = parse_line(input, point);
 
         REQUIRE(success == false);
     }
 
-    SECTION("Valid line with escaped spaces in tags") {
+    SECTION("Escaped space in tag value") {
         const char* input = "cpu,host=server\\ 01 usage=99.9\n";
         bool success = parse_line(input, point);
 
@@ -139,7 +139,7 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         REQUIRE(point.field_count == 1);
     }
 
-    SECTION("Valid line without newline at the very end of file") {
+    SECTION("Line without trailing newline") {
         const char* input = "cpu,host=server01 usage=99.9";
         bool success = parse_line(input, point);
 
@@ -149,7 +149,7 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         REQUIRE(point.fields[0].value == "99.9");
     }
 
-    SECTION("Valid line with quoted string containing spaces") {
+    SECTION("Quoted string with spaces") {
         const char* input = "app_log msg=\"fatal error occurred\" 1727034041000\n";
         bool success = parse_line(input, point);
 
@@ -161,7 +161,7 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         REQUIRE(point.timestamp == "1727034041000");
     }
 
-    SECTION("Valid line with escaped quotes inside a quoted string") {
+    SECTION("Escaped quotes inside quoted string") {
         const char* input = "app_log msg=\"hello \\\"world\\\"\" 1727034041000\n";
         bool success = parse_line(input, point);
 
@@ -173,14 +173,14 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         REQUIRE(point.timestamp == "1727034041000");
     }
 
-    SECTION("Reject line with unclosed quote") {
+    SECTION("Unclosed quote") {
         const char* input = "app_log msg=\"this string never ends 1727034041000\n";
         bool success = parse_line(input, point);
 
         REQUIRE(success == false);
     }
 
-    SECTION("Multiple quoted fields and numeric fields mixed") {
+    SECTION("Quoted and numeric fields mixed") {
         const char* input = "audit user=\"mati\",action=\"login\",attempts=3 1727034041000\n";
         bool success = parse_line(input, point);
 
@@ -203,7 +203,7 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         REQUIRE(point.fields[0].value == "\"\""); 
     }
 
-    SECTION("Reject line exceeding MAX_TAG_COUNT") {
+    SECTION("More than MAX_TAG_COUNT tags") {
         std::string input = "sensor";
         for (unsigned int i = 0; i <= MAX_TAG_COUNT; ++i) {
             input += ",tag" + std::to_string(i) + "=value";
@@ -215,7 +215,7 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         REQUIRE(success == false); 
     }
 
-    SECTION("Reject line exceeding MAX_FIELD_COUNT") {
+    SECTION("More than MAX_FIELD_COUNT fields") {
         std::string input = "sensor,loc=Krakow ";
         for (unsigned int i = 0; i <= MAX_FIELD_COUNT; ++i) {
             if (i > 0) input += ",";
@@ -228,63 +228,63 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         REQUIRE(success == false);
     }
 
-    SECTION("Reject unescaped space in tag key") {
+    SECTION("Unescaped space in tag key") {
         const char* input = "cpu,ho st=a u=1\n";
         bool success = parse_line(input, point);
 
         REQUIRE(success == false);
     }
 
-    SECTION("Reject unescaped comma in tag key") {
+    SECTION("Unescaped comma in tag key") {
         const char* input = "cpu,host,x=1 u=1\n";
         bool success = parse_line(input, point);
 
         REQUIRE(success == false);
     }
 
-    SECTION("Reject unescaped equals sign in tag value") {
+    SECTION("Unescaped equals sign in tag value") {
         const char* input = "cpu,a=b=c u=1\n";
         bool success = parse_line(input, point);
 
         REQUIRE(success == false);
     }
 
-    SECTION("Reject unescaped space in field key") {
+    SECTION("Unescaped space in field key") {
         const char* input = "cpu a b=1\n";
         bool success = parse_line(input, point);
 
         REQUIRE(success == false);
     }
 
-    SECTION("Reject unescaped comma in field key") {
+    SECTION("Unescaped comma in field key") {
         const char* input = "cpu a,b=1\n";
         bool success = parse_line(input, point);
 
         REQUIRE(success == false);
     }
 
-    SECTION("Reject quote in the middle of unquoted field value") {
+    SECTION("Quote in the middle of unquoted field value") {
         const char* input = "cpu u=ab\"c d\"\n";
         bool success = parse_line(input, point);
 
         REQUIRE(success == false);
     }
 
-    SECTION("Reject characters after closing quote") {
+    SECTION("Characters after closing quote at end of line") {
         const char* input = "cpu u=\"abc\"x\n";
         bool success = parse_line(input, point);
 
         REQUIRE(success == false);
     }
 
-    SECTION("Reject characters after closing quote before next field") {
+    SECTION("Characters after closing quote before next field") {
         const char* input = "cpu u=\"abc\"x,v=1\n";
         bool success = parse_line(input, point);
 
         REQUIRE(success == false);
     }
 
-    SECTION("Valid line with escaped space in tag key") {
+    SECTION("Escaped space in tag key") {
         const char* input = "cpu,ho\\ st=a u=1\n";
         bool success = parse_line(input, point);
 
@@ -294,7 +294,7 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         REQUIRE(point.tags[0].value == "a");
     }
 
-    SECTION("Valid line with escaped comma in tag key") {
+    SECTION("Escaped comma in tag key") {
         const char* input = "cpu,host\\,x=1 u=1\n";
         bool success = parse_line(input, point);
 
@@ -304,7 +304,7 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         REQUIRE(point.tags[0].value == "1");
     }
 
-    SECTION("Valid line with escaped equals sign in tag value") {
+    SECTION("Escaped equals sign in tag value") {
         const char* input = "cpu,a=b\\=c u=1\n";
         bool success = parse_line(input, point);
 
@@ -314,7 +314,7 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         REQUIRE(point.tags[0].value == "b\\=c");
     }
 
-    SECTION("Valid line with escaped space in field key") {
+    SECTION("Escaped space in field key") {
         const char* input = "cpu a\\ b=1\n";
         bool success = parse_line(input, point);
 
@@ -324,7 +324,7 @@ TEST_CASE("InfluxDB Line Protocol Parser", "[parser]") {
         REQUIRE(point.fields[0].value == "1");
     }
 
-    SECTION("Valid quoted field followed by another field") {
+    SECTION("Quoted field followed by another field") {
         const char* input = "cpu u=\"a b\",v=1 1727034041000\n";
         bool success = parse_line(input, point);
 

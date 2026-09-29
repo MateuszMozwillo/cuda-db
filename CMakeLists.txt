@@ -14,6 +14,7 @@ add_library(db_core
     src/engine.cpp
     src/query.cpp
     src/cpu_executor.cpp
+    src/compression.cpp
 )
 
 find_package(Threads REQUIRED)
@@ -25,7 +26,7 @@ add_executable(gpu-db
 target_link_libraries(gpu-db PRIVATE db_core)
 
 add_executable(benchmark
-    benchmark/benchmark.cpp
+    benchmarks/benchmark.cpp
 )
 target_link_libraries(benchmark PRIVATE db_core)
 
@@ -95,6 +96,7 @@ add_executable(unit_tests
     tests/test_query.cpp
     tests/test_aggregation.cpp
     tests/test_cpu_executor.cpp
+    tests/test_compression.cpp
 )
 
 target_link_libraries(unit_tests PRIVATE db_core Catch2::Catch2WithMain)

@@ -69,29 +69,29 @@ TEST_CASE("handle_cpu_query field filter", "[cpu_executor]") {
     MemTable mem_table;
     fill_mem_table(mem_table);
 
-    SECTION("All rows of a field") {
+    SECTION("Field without other filters") {
         require_state(run_query(mem_table, "temperature"), 7, 177.0, -5.0, 100.0);
     }
 
-    SECTION("Other field from the same line is not counted") {
+    SECTION("Field that shares lines with another field") {
         require_state(run_query(mem_table, "pressure"), 1, 1000.0, 1000.0, 1000.0);
     }
 
-    SECTION("Field id that does not exist gives empty state") {
+    SECTION("Field id that does not exist") {
         ResolvedQuery resolved;
         resolved.field_id = 99;
 
         require_empty(handle_cpu_query(mem_table, resolved));
     }
 
-    SECTION("Field id 0 is never used by rows") {
+    SECTION("Field id 0") {
         ResolvedQuery resolved;
         resolved.field_id = 0;
 
         require_empty(handle_cpu_query(mem_table, resolved));
     }
 
-    SECTION("Empty mem table gives empty state") {
+    SECTION("Empty mem table") {
         MemTable empty;
         ResolvedQuery resolved;
         resolved.field_id = 1;
@@ -104,11 +104,11 @@ TEST_CASE("handle_cpu_query time range", "[cpu_executor]") {
     MemTable mem_table;
     fill_mem_table(mem_table);
 
-    SECTION("From is inclusive") {
+    SECTION("Range starting exactly at a point") {
         require_state(run_query(mem_table, "temperature", {}, 100, 150), 2, 110.0, 10.0, 100.0);
     }
 
-    SECTION("To is exclusive") {
+    SECTION("Range ending exactly at a point") {
         require_state(run_query(mem_table, "temperature", {}, 200, 250), 1, 20.0, 20.0, 20.0);
     }
 
@@ -136,25 +136,25 @@ TEST_CASE("handle_cpu_query time range", "[cpu_executor]") {
         require_empty(run_query(mem_table, "temperature", {}, 101, 150));
     }
 
-    SECTION("Open ended range includes the last point") {
+    SECTION("Open ended range from the last point") {
         require_state(run_query(mem_table, "temperature", {}, 400, MAX_TS), 1, 7.0, 7.0, 7.0);
     }
 
-    SECTION("Point with timestamp 0 is found by the default range") {
+    SECTION("Point with timestamp 0, default range") {
         MemTable zero;
         insert_line(zero, "sensor v=1 0\n");
 
         require_state(run_query(zero, "v"), 1, 1.0, 1.0, 1.0);
     }
 
-    SECTION("Point with the largest allowed timestamp is found by the default range") {
+    SECTION("Point with the largest allowed timestamp, default range") {
         MemTable last;
         insert_line(last, "sensor v=1 18446744073709551614\n");
 
         require_state(run_query(last, "v"), 1, 1.0, 1.0, 1.0);
     }
 
-    SECTION("Manually built empty range gives empty state") {
+    SECTION("Manually built empty range") {
         ResolvedQuery resolved;
         resolved.field_id = 1;
         resolved.from = 200;
@@ -163,7 +163,7 @@ TEST_CASE("handle_cpu_query time range", "[cpu_executor]") {
         require_empty(handle_cpu_query(mem_table, resolved));
     }
 
-    SECTION("Manually built reversed range gives empty state") {
+    SECTION("Manually built reversed range") {
         ResolvedQuery resolved;
         resolved.field_id = 1;
         resolved.from = 300;
@@ -189,22 +189,22 @@ TEST_CASE("handle_cpu_query series filter", "[cpu_executor]") {
         require_state(run_query(mem_table, "temperature", {"loc=Krakow", "host=b"}), 2, 10.0, -5.0, 15.0);
     }
 
-    SECTION("Tags and time range together") {
+    SECTION("Tag and time range") {
         require_state(run_query(mem_table, "temperature", {"host=a"}, 150, 400), 2, 50.0, 20.0, 30.0);
     }
 
-    SECTION("Tag filter and field that the series does not have") {
+    SECTION("Tag of a series without the queried field") {
         require_empty(run_query(mem_table, "pressure", {"host=b"}));
     }
 
-    SECTION("Series without tags is excluded by any tag filter") {
+    SECTION("Tag filter with an untagged series present") {
         AggState state = run_query(mem_table, "temperature", {"host=a"});
 
         REQUIRE(state.max != 7.0);
         REQUIRE(state.count == 4);
     }
 
-    SECTION("Filter flag off ignores the bitmap") {
+    SECTION("Filter flag off with a non-empty bitmap") {
         ResolvedQuery resolved;
         resolved.field_id = 1;
         resolved.has_series_filter = false;
@@ -213,7 +213,7 @@ TEST_CASE("handle_cpu_query series filter", "[cpu_executor]") {
         require_state(handle_cpu_query(mem_table, resolved), 7, 177.0, -5.0, 100.0);
     }
 
-    SECTION("Bitmap with all zeros gives empty state") {
+    SECTION("Bitmap with all zeros") {
         ResolvedQuery resolved;
         resolved.field_id = 1;
         resolved.has_series_filter = true;
@@ -222,7 +222,7 @@ TEST_CASE("handle_cpu_query series filter", "[cpu_executor]") {
         require_empty(handle_cpu_query(mem_table, resolved));
     }
 
-    SECTION("Bitmap with all ones gives all rows") {
+    SECTION("Bitmap with all ones") {
         ResolvedQuery resolved;
         resolved.field_id = 1;
         resolved.has_series_filter = true;
@@ -242,7 +242,7 @@ TEST_CASE("handle_cpu_query series filter", "[cpu_executor]") {
 }
 
 TEST_CASE("handle_cpu_query data edge cases", "[cpu_executor]") {
-    SECTION("Duplicate points are all counted") {
+    SECTION("Duplicate points") {
         MemTable mem_table;
         insert_line(mem_table, "sensor,host=a v=5 100\n");
         insert_line(mem_table, "sensor,host=a v=5 100\n");
@@ -268,7 +268,7 @@ TEST_CASE("handle_cpu_query data edge cases", "[cpu_executor]") {
         require_state(run_query(mem_table, "v"), 2, -3.0, -2.0, -1.0);
     }
 
-    SECTION("Series with tags in different order are separate series but both match") {
+    SECTION("Same tags in different order") {
         MemTable mem_table;
         insert_line(mem_table, "sensor,a=1,b=2 v=1 1\n");
         insert_line(mem_table, "sensor,b=2,a=1 v=2 2\n");
@@ -276,7 +276,7 @@ TEST_CASE("handle_cpu_query data edge cases", "[cpu_executor]") {
         require_state(run_query(mem_table, "v", {"a=1", "b=2"}), 2, 3.0, 1.0, 2.0);
     }
 
-    SECTION("Rows added to an existing series after resolve are counted") {
+    SECTION("Rows added to an existing series after resolve") {
         MemTable mem_table;
         insert_line(mem_table, "sensor,host=a v=1 1\n");
 
@@ -293,7 +293,7 @@ TEST_CASE("handle_cpu_query data edge cases", "[cpu_executor]") {
     }
 }
 
-TEST_CASE("handle_cpu_query against a reference implementation", "[cpu_executor]") {
+TEST_CASE("handle_cpu_query on 20 000 generated rows", "[cpu_executor]") {
     MemTable mem_table;
 
     struct Row {
@@ -344,7 +344,7 @@ TEST_CASE("handle_cpu_query against a reference implementation", "[cpu_executor]
                       expected.count, expected.sum, expected.min, expected.max);
     }
 
-    SECTION("Splitting the time range and merging gives the same result") {
+    SECTION("Time range split in two and merged") {
         AggState full = run_query(mem_table, "v", {"host=h2"}, 1000, 190000);
         AggState left = run_query(mem_table, "v", {"host=h2"}, 1000, 77777);
         AggState right = run_query(mem_table, "v", {"host=h2"}, 77777, 190000);
@@ -354,7 +354,7 @@ TEST_CASE("handle_cpu_query against a reference implementation", "[cpu_executor]
         require_state(left, full.count, full.sum, full.min, full.max);
     }
 
-    SECTION("Every host together covers the whole data set") {
+    SECTION("Every host merged together") {
         AggState merged;
         for (int host = 0; host < 7; ++host) {
             merged.merge(run_query(mem_table, "v", {"host=h" + std::to_string(host)}));
@@ -408,15 +408,15 @@ TEST_CASE("handle_cpu_query with multiple threads", "[cpu_executor]") {
         require_same_for_all_thread_counts(resolve({"host=h3"}, 0, MAX_TS));
     }
 
-    SECTION("Time range that falls into a single thread's chunk") {
+    SECTION("Time range inside one thread's chunk") {
         require_same_for_all_thread_counts(resolve({}, 100, 200));
     }
 
-    SECTION("Time range that crosses chunk boundaries") {
+    SECTION("Time range across chunk boundaries") {
         require_same_for_all_thread_counts(resolve({"host=h5"}, 12345, 150001));
     }
 
-    SECTION("Only the first and the last row match") {
+    SECTION("Matching rows only at the first and last position") {
         MemTable edges;
         insert_line(edges, "sensor,host=x v=1 1\n");
         for (int i = 0; i < 1000; ++i) {
@@ -438,7 +438,7 @@ TEST_CASE("handle_cpu_query with multiple threads", "[cpu_executor]") {
     }
 }
 
-TEST_CASE("handle_cpu_query thread count limits", "[cpu_executor]") {
+TEST_CASE("handle_cpu_query with more threads than rows", "[cpu_executor]") {
     SECTION("More threads than rows") {
         MemTable mem_table;
         fill_mem_table(mem_table);

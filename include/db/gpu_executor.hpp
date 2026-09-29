@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "db/compression.hpp"
 #include "db/mem_table.hpp"
 #include "db/query.hpp"
 
@@ -22,22 +23,33 @@ public:
     AggState run_query(const ResolvedQuery &query);
 
     size_t uploaded_rows() const { return row_count; }
+    size_t uploaded_bytes() const { return uploaded_byte_count; }
+
+    double compression_seconds() const { return last_compression_seconds; }
+    double transfer_seconds() const { return last_transfer_seconds; }
 
     static bool device_available();
 
-    // creates the CUDA context, otherwise the first CUDA call made by upload() or
-    // run_query() pays for it (a few hundred milliseconds)
-    static void initialize_device();
-
 private:
+    struct DevicePackedColumn {
+        PackedBlock *blocks = nullptr;
+        std::uint64_t *words = nullptr;
+
+        PackedColumnView view() const { return {blocks, words}; }
+    };
+
     void free_columns();
     void free_query_buffers();
+    void upload_packed(DevicePackedColumn &d_column, const PackedColumn &column);
 
-    std::uint32_t *d_series_ids = nullptr;
-    std::uint32_t *d_field_ids = nullptr;
+    DevicePackedColumn d_series_ids;
+    DevicePackedColumn d_field_ids;
+    DevicePackedColumn d_timestamps;
     double *d_field_values = nullptr;
-    std::uint64_t *d_timestamps = nullptr;
     size_t row_count = 0;
+    size_t uploaded_byte_count = 0;
+    double last_compression_seconds = 0.0;
+    double last_transfer_seconds = 0.0;
 
     std::uint8_t *d_series_filter = nullptr;
     size_t series_filter_capacity = 0;

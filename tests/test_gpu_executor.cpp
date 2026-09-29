@@ -43,8 +43,7 @@ static ResolvedQuery resolve(const MemTable &mem_table, const char* field,
     return resolved;
 }
 
-// count, min and max have to be identical, the sum may differ in the last bits
-// because the GPU adds the values in a different order
+// the GPU adds values in a different order, so only the sum may differ (in the last bits)
 static void require_same(const AggState &gpu, const AggState &cpu) {
     REQUIRE(gpu.count == cpu.count);
     REQUIRE(gpu.min == cpu.min);
@@ -92,7 +91,7 @@ TEST_CASE("GpuExecutor on a small mem table", "[gpu]") {
 
     REQUIRE(gpu.uploaded_rows() == mem_table.row_count());
 
-    SECTION("All rows of a field") {
+    SECTION("Field without other filters") {
         AggState state = gpu.run_query(resolve(mem_table, "temperature"));
 
         REQUIRE(state.count == 7);
@@ -105,7 +104,7 @@ TEST_CASE("GpuExecutor on a small mem table", "[gpu]") {
         require_gpu_matches_cpu(gpu, mem_table, resolve(mem_table, "pressure"));
     }
 
-    SECTION("From is inclusive, to is exclusive") {
+    SECTION("Ranges starting and ending exactly at points") {
         require_gpu_matches_cpu(gpu, mem_table, resolve(mem_table, "temperature", {}, 100, 150));
         require_gpu_matches_cpu(gpu, mem_table, resolve(mem_table, "temperature", {}, 200, 250));
         require_gpu_matches_cpu(gpu, mem_table, resolve(mem_table, "temperature", {}, 300, 301));
@@ -125,13 +124,13 @@ TEST_CASE("GpuExecutor on a small mem table", "[gpu]") {
         require_gpu_matches_cpu(gpu, mem_table, resolve(mem_table, "temperature", {"host=a"}, 150, 400));
     }
 
-    SECTION("Tag filter and field the series does not have") {
+    SECTION("Tag of a series without the queried field") {
         AggState state = gpu.run_query(resolve(mem_table, "pressure", {"host=b"}));
 
         REQUIRE(state.count == 0);
     }
 
-    SECTION("Filter flag off ignores the bitmap") {
+    SECTION("Filter flag off with a non-empty bitmap") {
         ResolvedQuery resolved;
         resolved.field_id = 1;
         resolved.has_series_filter = false;
@@ -157,7 +156,7 @@ TEST_CASE("GpuExecutor on a small mem table", "[gpu]") {
         REQUIRE(gpu.run_query(resolved).count == 0);
     }
 
-    SECTION("Same executor answers many different queries") {
+    SECTION("60 queries on one executor") {
         for (int i = 0; i < 20; ++i) {
             require_gpu_matches_cpu(gpu, mem_table, resolve(mem_table, "temperature", {"host=a"}));
             require_gpu_matches_cpu(gpu, mem_table, resolve(mem_table, "temperature"));
@@ -216,7 +215,7 @@ TEST_CASE("GpuExecutor edge cases", "[gpu]") {
         REQUIRE(state.max == -3.0);
     }
 
-    SECTION("Snapshot is not updated until upload is called again") {
+    SECTION("Rows inserted after upload") {
         MemTable mem_table;
         insert_line(mem_table, "sensor v=1 1\n");
         GpuExecutor gpu;
@@ -232,7 +231,7 @@ TEST_CASE("GpuExecutor edge cases", "[gpu]") {
         require_gpu_matches_cpu(gpu, mem_table, resolved);
     }
 
-    SECTION("Upload of a smaller mem table replaces the previous one") {
+    SECTION("Smaller mem table uploaded after a bigger one") {
         MemTable big;
         fill_large(big, 5000);
         MemTable small;
@@ -248,7 +247,7 @@ TEST_CASE("GpuExecutor edge cases", "[gpu]") {
         REQUIRE(state.sum == 42.0);
     }
 
-    SECTION("Series filter grows between queries") {
+    SECTION("Mem table with 2000 series after one with a single series") {
         MemTable small;
         insert_line(small, "sensor,host=a v=1 1\n");
         GpuExecutor gpu;
@@ -294,8 +293,7 @@ TEST_CASE("GpuExecutor edge cases", "[gpu]") {
 TEST_CASE("GpuExecutor row counts around block boundaries", "[gpu]") {
     REQUIRE_GPU();
 
-    // 256 is the block size, the larger counts need several blocks and several
-    // iterations of the grid-stride loop
+    // counts around the warp size (32) and the block size (256)
     for (int lines : {1, 2, 31, 32, 33, 127, 128, 129, 255, 256, 257, 511, 512, 513, 1000, 4099}) {
         DYNAMIC_SECTION("lines: " << lines) {
             MemTable mem_table;
@@ -311,11 +309,10 @@ TEST_CASE("GpuExecutor row counts around block boundaries", "[gpu]") {
     }
 }
 
-TEST_CASE("GpuExecutor matches CPU on a large data set", "[gpu]") {
+TEST_CASE("GpuExecutor on a large data set", "[gpu]") {
     REQUIRE_GPU();
 
-    // 300 000 lines give 600 000 rows, more rows than threads in the grid,
-    // so every thread goes through several iterations of the grid-stride loop
+    // 600 000 rows, more than threads in the grid
     MemTable mem_table;
     fill_large(mem_table, 300000);
     GpuExecutor gpu;
@@ -342,7 +339,7 @@ TEST_CASE("GpuExecutor matches CPU on a large data set", "[gpu]") {
         require_gpu_matches_cpu(gpu, mem_table, resolve(mem_table, "w", {"host=h5"}, 777, 2222222));
     }
 
-    SECTION("Only the first and the last row match") {
+    SECTION("Time ranges matching only the first or the last row") {
         AggState first = gpu.run_query(resolve(mem_table, "v", {}, 0, 1));
         AggState last = gpu.run_query(resolve(mem_table, "v", {}, 2999990, MAX_TS));
 
@@ -350,7 +347,7 @@ TEST_CASE("GpuExecutor matches CPU on a large data set", "[gpu]") {
         REQUIRE(last.count == 1);
     }
 
-    SECTION("GPU agrees with the multi-threaded CPU executor") {
+    SECTION("Tag filter compared with the multi-threaded CPU executor") {
         ResolvedQuery resolved = resolve(mem_table, "v", {"host=h3"});
 
         require_same(gpu.run_query(resolved), handle_cpu_query(mem_table, resolved, 8));

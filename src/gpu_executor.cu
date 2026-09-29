@@ -1,6 +1,7 @@
 #include "db/gpu_executor.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <vector>
 
 #include "db/cuda_utils.cuh"
@@ -36,27 +37,22 @@ bool GpuExecutor::device_available() {
     return cudaGetDeviceCount(&device_count) == cudaSuccess && device_count > 0;
 }
 
-void GpuExecutor::initialize_device() {
-    // cudaFree(nullptr) does nothing except forcing the runtime to create the context
-    CUDA_CHECK(cudaFree(nullptr));
-}
-
 GpuExecutor::~GpuExecutor() {
     free_columns();
     free_query_buffers();
 }
 
 void GpuExecutor::free_columns() {
-    cudaFree(d_series_ids);
-    cudaFree(d_field_ids);
+    for (DevicePackedColumn *column : {&d_series_ids, &d_field_ids, &d_timestamps}) {
+        cudaFree(column->blocks);
+        cudaFree(column->words);
+        *column = DevicePackedColumn{};
+    }
     cudaFree(d_field_values);
-    cudaFree(d_timestamps);
 
-    d_series_ids = nullptr;
-    d_field_ids = nullptr;
     d_field_values = nullptr;
-    d_timestamps = nullptr;
     row_count = 0;
+    uploaded_byte_count = 0;
 }
 
 void GpuExecutor::free_query_buffers() {
@@ -77,10 +73,28 @@ void GpuExecutor::upload(const MemTable &mem_table) {
         return;
     }
 
-    upload_column(d_series_ids, mem_table.series_ids());
-    upload_column(d_field_ids, mem_table.field_ids());
+    using Clock = std::chrono::steady_clock;
+
+    auto start = Clock::now();
+    PackedColumn series_ids = pack_column(mem_table.series_ids());
+    PackedColumn field_ids = pack_column(mem_table.field_ids());
+    PackedColumn timestamps = pack_column(mem_table.timestamps());
+    last_compression_seconds = std::chrono::duration<double>(Clock::now() - start).count();
+
+    start = Clock::now();
+    upload_packed(d_series_ids, series_ids);
+    upload_packed(d_field_ids, field_ids);
+    upload_packed(d_timestamps, timestamps);
+
     upload_column(d_field_values, mem_table.field_values());
-    upload_column(d_timestamps, mem_table.timestamps());
+    uploaded_byte_count += mem_table.field_values().size() * sizeof(double);
+    last_transfer_seconds = std::chrono::duration<double>(Clock::now() - start).count();
+}
+
+void GpuExecutor::upload_packed(DevicePackedColumn &d_column, const PackedColumn &column) {
+    upload_column(d_column.blocks, column.blocks);
+    upload_column(d_column.words, column.words);
+    uploaded_byte_count += column.size_bytes();
 }
 
 namespace {
@@ -89,10 +103,10 @@ constexpr unsigned BLOCK_SIZE = 256;
 
 constexpr int BLOCKS_PER_MULTIPROCESSOR = 8;
 
-__global__ void scan_kernel(const std::uint32_t *__restrict__ series_ids,
-                            const std::uint32_t *__restrict__ field_ids,
+__global__ void scan_kernel(PackedColumnView series_ids,
+                            PackedColumnView field_ids,
                             const double *__restrict__ field_values,
-                            const std::uint64_t *__restrict__ timestamps,
+                            PackedColumnView timestamps,
                             size_t row_count,
                             std::uint32_t field_id,
                             std::uint64_t from,
@@ -112,9 +126,10 @@ __global__ void scan_kernel(const std::uint32_t *__restrict__ series_ids,
 
     AggState local_agg_state;
     for (size_t i = starting_idx; i < row_count; i += hop) {
-        if (field_ids[i] != field_id) continue;
-        if (timestamps[i] < from || timestamps[i] >= to) continue;
-        if (has_series_filter && series_filter[series_ids[i]] == 0) continue;
+        if (unpack_value(field_ids, i) != field_id) continue;
+        std::uint64_t timestamp = unpack_value(timestamps, i);
+        if (timestamp < from || timestamp >= to) continue;
+        if (has_series_filter && series_filter[unpack_value(series_ids, i)] == 0) continue;
         local_agg_state.update(field_values[i]);
     }
 
@@ -171,7 +186,7 @@ AggState GpuExecutor::run_query(const ResolvedQuery &query) {
 
     ensure_capacity(d_block_results, block_results_capacity, blocks);
 
-    scan_kernel<<<blocks, BLOCK_SIZE>>>(d_series_ids, d_field_ids, d_field_values, d_timestamps, row_count,
+    scan_kernel<<<blocks, BLOCK_SIZE>>>(d_series_ids.view(), d_field_ids.view(), d_field_values, d_timestamps.view(), row_count,
                                         query.field_id, query.from, query.to,
                                         query.has_series_filter, d_filter, d_block_results);
     CUDA_CHECK_LAUNCH();

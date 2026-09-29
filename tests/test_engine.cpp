@@ -13,10 +13,10 @@ static bool insert_line(Engine &engine, const char* input) {
     return engine.insert(point);
 }
 
-TEST_CASE("Engine routes data points to mem tables", "[engine]") {
+TEST_CASE("Engine insert", "[engine]") {
     Engine engine;
 
-    SECTION("Lines from the same dataset go to one mem table") {
+    SECTION("Lines from the same dataset") {
         REQUIRE(insert_line(engine, "sensor,location=Krakow temperature=80.5 1\n") == true);
         REQUIRE(insert_line(engine, "sensor,location=Warsaw temperature=81.0 2\n") == true);
 
@@ -27,7 +27,7 @@ TEST_CASE("Engine routes data points to mem tables", "[engine]") {
         REQUIRE(sensor->row_count() == 2);
     }
 
-    SECTION("Different datasets get separate mem tables") {
+    SECTION("Lines from different datasets") {
         REQUIRE(insert_line(engine, "sensor,location=Krakow temperature=80.5 1\n") == true);
         REQUIRE(insert_line(engine, "cpu,host=server01 usage=42.5 2\n") == true);
         REQUIRE(insert_line(engine, "sensor,location=Krakow temperature=81.0 3\n") == true);
@@ -47,7 +47,7 @@ TEST_CASE("Engine routes data points to mem tables", "[engine]") {
         REQUIRE(cpu->field_values()[0] == 42.5);
     }
 
-    SECTION("Series and field ids start from 1 in every dataset") {
+    SECTION("Ids of the second dataset") {
         REQUIRE(insert_line(engine, "sensor,location=Krakow temperature=80.5,pressure=1024.1 1\n") == true);
         REQUIRE(insert_line(engine, "cpu,host=server01 usage=42.5 2\n") == true);
 
@@ -57,20 +57,20 @@ TEST_CASE("Engine routes data points to mem tables", "[engine]") {
         REQUIRE(cpu->field_ids()[0] == 1);
     }
 
-    SECTION("Unknown dataset is not found") {
+    SECTION("Dataset that was never inserted") {
         REQUIRE(insert_line(engine, "sensor temperature=80.5 1\n") == true);
 
         REQUIRE(engine.find_mem_table("cpu") == nullptr);
     }
 
-    SECTION("Rejected line does not create a mem table") {
+    SECTION("Rejected line with a new dataset") {
         REQUIRE(insert_line(engine, "sensor temperature=abc 1\n") == false);
 
         REQUIRE(engine.dataset_count() == 0);
         REQUIRE(engine.find_mem_table("sensor") == nullptr);
     }
 
-    SECTION("Data survives mem_tables vector reallocation") {
+    SECTION("1000 datasets") {
         REQUIRE(insert_line(engine, "dataset0,location=Krakow temperature=80.5 1\n") == true);
 
         for (unsigned int i = 1; i < 1000; ++i) {
@@ -114,11 +114,11 @@ static void fill_engine(Engine &engine) {
     REQUIRE(insert_line(engine, "cpu,host=a temperature=1000 100\n") == true);
 }
 
-TEST_CASE("Engine query results", "[engine]") {
+TEST_CASE("Engine query", "[engine]") {
     Engine engine;
     fill_engine(engine);
 
-    SECTION("All operations without filters") {
+    SECTION("All operations, no filters") {
         REQUIRE(engine.query(make_query("sensor", "temperature", OperationType::COUNT)) == 7.0);
         REQUIRE(engine.query(make_query("sensor", "temperature", OperationType::MIN)) == -5.0);
         REQUIRE(engine.query(make_query("sensor", "temperature", OperationType::MAX)) == 100.0);
@@ -142,19 +142,19 @@ TEST_CASE("Engine query results", "[engine]") {
         REQUIRE(engine.query(query) == 35.0);
     }
 
-    SECTION("Datasets do not mix") {
+    SECTION("Same field in two datasets") {
         REQUIRE(engine.query(make_query("cpu", "temperature", OperationType::COUNT)) == 1.0);
         REQUIRE(engine.query(make_query("cpu", "temperature", OperationType::AVG)) == 1000.0);
         REQUIRE(engine.query(make_query("sensor", "temperature", OperationType::MAX)) == 100.0);
     }
 
-    SECTION("Query can be called on a const engine") {
+    SECTION("Const engine") {
         const Engine &const_engine = engine;
 
         REQUIRE(const_engine.query(make_query("sensor", "temperature", OperationType::COUNT)) == 7.0);
     }
 
-    SECTION("Results change after more inserts") {
+    SECTION("Inserts between queries") {
         REQUIRE(engine.query(make_query("sensor", "temperature", OperationType::MAX, {"host=c"})) == std::nullopt);
 
         REQUIRE(insert_line(engine, "sensor,host=c temperature=500 500\n") == true);
@@ -164,7 +164,7 @@ TEST_CASE("Engine query results", "[engine]") {
         REQUIRE(engine.query(make_query("sensor", "temperature", OperationType::COUNT)) == 8.0);
     }
 
-    SECTION("Rejected lines do not change results") {
+    SECTION("Rejected lines between queries") {
         REQUIRE(insert_line(engine, "sensor,host=a temperature=abc 100\n") == false);
         REQUIRE(insert_line(engine, "sensor,host=a temperature=1,pressure=xyz 100\n") == false);
 
@@ -173,7 +173,7 @@ TEST_CASE("Engine query results", "[engine]") {
     }
 }
 
-TEST_CASE("Engine query without matching data", "[engine]") {
+TEST_CASE("Engine query, no matching data", "[engine]") {
     Engine engine;
     fill_engine(engine);
 
@@ -249,7 +249,7 @@ TEST_CASE("Engine query without matching data", "[engine]") {
         REQUIRE(empty.query(query) == std::nullopt);
     }
 
-    SECTION("Query does not create a dataset") {
+    SECTION("Dataset count after querying an unknown dataset") {
         size_t before = engine.dataset_count();
 
         engine.query(make_query("disk", "temperature", OperationType::COUNT));

@@ -46,7 +46,7 @@ TEST_CASE("resolve_query fields and time range", "[query]") {
     fill_mem_table(mem_table);
     ResolvedQuery resolved;
 
-    SECTION("Query without tags has no series filter") {
+    SECTION("Query without tags") {
         Query query = make_query("temperature");
 
         REQUIRE(resolve_query(mem_table, query, resolved) == ResolveResult::OK);
@@ -56,14 +56,14 @@ TEST_CASE("resolve_query fields and time range", "[query]") {
         REQUIRE(resolved.operation_type == OperationType::AVG);
     }
 
-    SECTION("Field name is resolved to its id") {
+    SECTION("Second field") {
         Query query = make_query("pressure");
 
         REQUIRE(resolve_query(mem_table, query, resolved) == ResolveResult::OK);
         REQUIRE(resolved.field_id == 2);
     }
 
-    SECTION("Operation type is copied") {
+    SECTION("MAX operation") {
         Query query = make_query("temperature");
         query.operation_type = OperationType::MAX;
 
@@ -71,13 +71,13 @@ TEST_CASE("resolve_query fields and time range", "[query]") {
         REQUIRE(resolved.operation_type == OperationType::MAX);
     }
 
-    SECTION("Unknown field gives no match") {
+    SECTION("Unknown field") {
         Query query = make_query("humidity");
 
         REQUIRE(resolve_query(mem_table, query, resolved) == ResolveResult::NO_MATCH);
     }
 
-    SECTION("Default time range covers everything") {
+    SECTION("Default time range") {
         Query query = make_query("temperature");
 
         REQUIRE(resolve_query(mem_table, query, resolved) == ResolveResult::OK);
@@ -85,7 +85,7 @@ TEST_CASE("resolve_query fields and time range", "[query]") {
         REQUIRE(resolved.to == std::numeric_limits<std::uint64_t>::max());
     }
 
-    SECTION("Time range is copied") {
+    SECTION("Explicit time range") {
         Query query = make_query("temperature");
         query.from = 150;
         query.to = 450;
@@ -95,7 +95,7 @@ TEST_CASE("resolve_query fields and time range", "[query]") {
         REQUIRE(resolved.to == 450);
     }
 
-    SECTION("Empty time range gives no match") {
+    SECTION("Empty time range") {
         Query query = make_query("temperature");
         query.from = 300;
         query.to = 300;
@@ -103,7 +103,7 @@ TEST_CASE("resolve_query fields and time range", "[query]") {
         REQUIRE(resolve_query(mem_table, query, resolved) == ResolveResult::NO_MATCH);
     }
 
-    SECTION("Reversed time range gives no match") {
+    SECTION("Reversed time range") {
         Query query = make_query("temperature");
         query.from = 400;
         query.to = 100;
@@ -111,7 +111,7 @@ TEST_CASE("resolve_query fields and time range", "[query]") {
         REQUIRE(resolve_query(mem_table, query, resolved) == ResolveResult::NO_MATCH);
     }
 
-    SECTION("Empty mem table gives no match") {
+    SECTION("Empty mem table") {
         MemTable empty_mem_table;
         Query query = make_query("temperature");
 
@@ -132,7 +132,7 @@ TEST_CASE("resolve_query series filter", "[query]") {
         REQUIRE(resolved.series_filter == std::vector<std::uint8_t>{0, 1, 0, 1, 1, 0});
     }
 
-    SECTION("Filter has one entry per series plus unused index 0") {
+    SECTION("Tag of a single series") {
         Query query = make_query("temperature", {"host=b"});
 
         REQUIRE(resolve_query(mem_table, query, resolved) == ResolveResult::OK);
@@ -140,21 +140,21 @@ TEST_CASE("resolve_query series filter", "[query]") {
         REQUIRE(resolved.series_filter[0] == 0);
     }
 
-    SECTION("Two tags are combined with AND") {
+    SECTION("Two tags") {
         Query query = make_query("temperature", {"location=Krakow", "version=1"});
 
         REQUIRE(resolve_query(mem_table, query, resolved) == ResolveResult::OK);
         REQUIRE(resolved.series_filter == std::vector<std::uint8_t>{0, 1, 0, 1, 0, 0});
     }
 
-    SECTION("Three tags are combined with AND") {
+    SECTION("Three tags") {
         Query query = make_query("temperature", {"host=a", "location=Krakow", "version=1"});
 
         REQUIRE(resolve_query(mem_table, query, resolved) == ResolveResult::OK);
         REQUIRE(resolved.series_filter == std::vector<std::uint8_t>{0, 1, 0, 0, 0, 0});
     }
 
-    SECTION("Order of tags in the query does not matter") {
+    SECTION("Three tags in a different order") {
         Query query = make_query("temperature", {"version=1", "location=Krakow", "host=a"});
 
         REQUIRE(resolve_query(mem_table, query, resolved) == ResolveResult::OK);
@@ -168,25 +168,25 @@ TEST_CASE("resolve_query series filter", "[query]") {
         REQUIRE(resolved.series_filter == std::vector<std::uint8_t>{0, 1, 0, 1, 1, 0});
     }
 
-    SECTION("Unknown tag gives no match") {
+    SECTION("Unknown tag") {
         Query query = make_query("temperature", {"location=Gdansk"});
 
         REQUIRE(resolve_query(mem_table, query, resolved) == ResolveResult::NO_MATCH);
     }
 
-    SECTION("Unknown tag among known tags gives no match") {
+    SECTION("Unknown tag among known tags") {
         Query query = make_query("temperature", {"location=Krakow", "location=Gdansk", "version=1"});
 
         REQUIRE(resolve_query(mem_table, query, resolved) == ResolveResult::NO_MATCH);
     }
 
-    SECTION("Tags that never appear together give no match") {
+    SECTION("Tags that never appear together") {
         Query query = make_query("temperature", {"location=Warsaw", "version=2"});
 
         REQUIRE(resolve_query(mem_table, query, resolved) == ResolveResult::NO_MATCH);
     }
 
-    SECTION("Reused result does not keep the filter from a previous query") {
+    SECTION("Query without tags after a query with tags") {
         Query with_tags = make_query("temperature", {"location=Krakow"});
         REQUIRE(resolve_query(mem_table, with_tags, resolved) == ResolveResult::OK);
         REQUIRE(resolved.has_series_filter == true);
@@ -235,7 +235,7 @@ TEST_CASE("resolve_query edge cases", "[query]") {
         REQUIRE(resolve_query(mem_table, query, resolved) == ResolveResult::NO_MATCH);
     }
 
-    SECTION("Time range outside of the data is still OK") {
+    SECTION("Time range outside of the data") {
         Query query = make_query("temperature");
         query.from = 1'000'000;
         query.to = 2'000'000;
@@ -243,38 +243,38 @@ TEST_CASE("resolve_query edge cases", "[query]") {
         REQUIRE(resolve_query(mem_table, query, resolved) == ResolveResult::OK);
     }
 
-    SECTION("Field names are case sensitive") {
+    SECTION("Field name with different case") {
         Query query = make_query("Temperature");
 
         REQUIRE(resolve_query(mem_table, query, resolved) == ResolveResult::NO_MATCH);
     }
 
-    SECTION("Field name with trailing space is not the same field") {
+    SECTION("Field name with trailing space") {
         Query query = make_query("temperature ");
 
         REQUIRE(resolve_query(mem_table, query, resolved) == ResolveResult::NO_MATCH);
     }
 
-    SECTION("Tag names are case sensitive") {
+    SECTION("Tag value with different case") {
         Query query = make_query("temperature", {"location=krakow"});
 
         REQUIRE(resolve_query(mem_table, query, resolved) == ResolveResult::NO_MATCH);
     }
 
-    SECTION("Field used as a tag gives no match") {
+    SECTION("Field used as a tag") {
         Query query = make_query("temperature", {"temperature=20.0"});
 
         REQUIRE(resolve_query(mem_table, query, resolved) == ResolveResult::NO_MATCH);
     }
 
-    SECTION("Dataset name is not checked by resolve_query") {
+    SECTION("Name of another dataset") {
         Query query = make_query("temperature");
         query.dataset = "cpu";
 
         REQUIRE(resolve_query(mem_table, query, resolved) == ResolveResult::OK);
     }
 
-    SECTION("Series filter does not check if the series has the queried field") {
+    SECTION("Tag of a series without the queried field") {
         Query query = make_query("pressure", {"host=b"});
 
         REQUIRE(resolve_query(mem_table, query, resolved) == ResolveResult::OK);
@@ -291,7 +291,7 @@ TEST_CASE("resolve_query edge cases", "[query]") {
         REQUIRE(resolved.series_filter == std::vector<std::uint8_t>{0, 1, 1, 1});
     }
 
-    SECTION("Filter marks the highest series id") {
+    SECTION("Tag of the series with the highest id") {
         MemTable single;
         insert_line(single, "sensor,host=a temperature=1.0 1\n");
 
@@ -299,7 +299,7 @@ TEST_CASE("resolve_query edge cases", "[query]") {
         REQUIRE(resolved.series_filter == std::vector<std::uint8_t>{0, 1});
     }
 
-    SECTION("Series without tags can not be matched by a tag filter") {
+    SECTION("Mem table with a single untagged series") {
         MemTable untagged;
         insert_line(untagged, "sensor temperature=1.0 1\n");
 
@@ -307,7 +307,7 @@ TEST_CASE("resolve_query edge cases", "[query]") {
         REQUIRE(resolve_query(untagged, make_query("temperature", {"host=a"}), resolved) == ResolveResult::NO_MATCH);
     }
 
-    SECTION("Escaped tag is matched by its raw form") {
+    SECTION("Escaped tag in raw and unescaped form") {
         MemTable escaped;
         insert_line(escaped, "sensor,location=New\\ York temperature=1.0 1\n");
 
@@ -332,7 +332,7 @@ TEST_CASE("resolve_query edge cases", "[query]") {
         REQUIRE(resolved.series_filter == std::vector<std::uint8_t>{0, 1, 0});
     }
 
-    SECTION("Result is usable after a previous NO_MATCH") {
+    SECTION("Query after a NO_MATCH query") {
         REQUIRE(resolve_query(mem_table, make_query("temperature", {"location=Gdansk"}), resolved) == ResolveResult::NO_MATCH);
 
         REQUIRE(resolve_query(mem_table, make_query("pressure", {"host=b"}), resolved) == ResolveResult::OK);
@@ -342,7 +342,7 @@ TEST_CASE("resolve_query edge cases", "[query]") {
     }
 }
 
-TEST_CASE("resolve_query leaves result consistent", "[query]") {
+TEST_CASE("resolve_query with a reused result", "[query]") {
     MemTable mem_table;
     fill_mem_table(mem_table);
     ResolvedQuery resolved;
@@ -352,14 +352,14 @@ TEST_CASE("resolve_query leaves result consistent", "[query]") {
             || resolved.series_filter.size() == mem_table.series_count() + 1;
     };
 
-    SECTION("NO_MATCH on unknown tag after a query without tags") {
+    SECTION("Unknown tag after a query without tags") {
         REQUIRE(resolve_query(mem_table, make_query("temperature"), resolved) == ResolveResult::OK);
 
         REQUIRE(resolve_query(mem_table, make_query("temperature", {"location=Gdansk"}), resolved) == ResolveResult::NO_MATCH);
         REQUIRE(filter_is_consistent());
     }
 
-    SECTION("NO_MATCH on disjoint tags after a query without tags") {
+    SECTION("Tags that never appear together after a query without tags") {
         REQUIRE(resolve_query(mem_table, make_query("temperature"), resolved) == ResolveResult::OK);
 
         REQUIRE(resolve_query(mem_table, make_query("temperature", {"location=Warsaw", "version=2"}), resolved) == ResolveResult::NO_MATCH);

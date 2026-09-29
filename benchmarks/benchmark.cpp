@@ -48,7 +48,6 @@ const std::vector<DatasetSpec> DATASETS = {
     {"sensor", {"temperature", "humidity", "pressure"}, -20.0, 1050.0},
 };
 
-// tag keys are written in sorted order: env, host, region
 const std::vector<const char *> ENVS = {"dev", "prod", "staging"};
 const std::vector<const char *> REGIONS = {"ap-south", "eu-central", "eu-west", "us-east", "us-west"};
 constexpr int HOST_COUNT = 100;
@@ -147,7 +146,6 @@ struct Timing {
     double average;
 };
 
-// runs fn QUERY_REPEATS times and returns the timing in seconds
 template <typename Fn>
 Timing measure(Fn fn) {
     std::vector<double> times;
@@ -272,24 +270,20 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    // creating the CUDA context takes a few hundred ms, do it before measuring the upload
-    db::GpuExecutor::initialize_device();
-
-    // every dataset gets its own copy of the columns in GPU memory, uploaded once
     std::map<std::string, std::unique_ptr<db::GpuExecutor>> gpu_executors;
-    double upload_seconds = 0.0;
+    double transfer_seconds = 0.0;
     for (const auto &dataset : DATASETS) {
         const db::MemTable *mem_table = engine.find_mem_table(dataset.name);
         if (mem_table == nullptr) continue;
 
         auto executor = std::make_unique<db::GpuExecutor>();
-        auto start = Clock::now();
         executor->upload(*mem_table);
-        upload_seconds += seconds_since(start);
+        transfer_seconds += executor->transfer_seconds();
+
         gpu_executors[dataset.name] = std::move(executor);
     }
 
-    std::printf("\nGPU upload (all datasets): %.1f ms\n\n", upload_seconds * 1e3);
+    std::printf("\nGPU upload, RAM -> VRAM: %.1f ms\n\n", transfer_seconds * 1e3);
 
     std::printf("GPU queries (%d runs each, best, median and average time):\n", QUERY_REPEATS);
     std::printf("  %-48s %-6s %14s %10s %10s %10s %12s\n",
@@ -300,7 +294,6 @@ int main(int argc, char *argv[]) {
         const db::MemTable *mem_table = engine.find_mem_table(named.query.dataset);
         db::GpuExecutor &gpu = *gpu_executors.at(named.query.dataset);
 
-        // same steps as Engine::query, only the scan runs on the GPU
         auto run = [&]() -> std::optional<double> {
             db::ResolvedQuery resolved;
             if (db::resolve_query(*mem_table, named.query, resolved) == db::ResolveResult::NO_MATCH) {
@@ -309,7 +302,7 @@ int main(int argc, char *argv[]) {
             return db::finalize(gpu.run_query(resolved), named.query.operation_type);
         };
 
-        run();  // warm up: the first launch of a kernel is slower
+        run();
 
         std::optional<double> result;
         Timing timing = measure([&]() { result = run(); });
