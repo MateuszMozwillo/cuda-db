@@ -1,5 +1,7 @@
 #include "db/engine.hpp"
 
+#include "db/cpu_executor.hpp"
+
 namespace db {
 
 MemTable &Engine::get_mem_table(std::string_view dataset) {
@@ -21,6 +23,21 @@ bool Engine::insert(const DataPoint &dp) {
     }
     get_mem_table(dp.dataset).commit(dp, pd);
     return true;
+}
+
+std::optional<double> Engine::query(const Query &query) const {
+    const MemTable *mem_table = find_mem_table(query.dataset);
+    if (mem_table == nullptr) {
+        return finalize(AggState{}, query.operation_type);
+    }
+
+    ResolvedQuery resolved;
+    if (resolve_query(*mem_table, query, resolved) == ResolveResult::NO_MATCH) {
+        return finalize(AggState{}, query.operation_type);
+    }
+
+    AggState state = handle_cpu_query(*mem_table, resolved);
+    return finalize(state, query.operation_type);
 }
 
 void Engine::print_mem_tables() {

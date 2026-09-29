@@ -2,12 +2,15 @@
 
 #include <charconv>
 #include <cstdint>
+#include <limits>
 #include <unordered_map>
 #include <string>
 #include <string_view>
 #include <functional>
 #include <chrono>
 #include <utility>
+#include <optional>
+#include <vector>
 #include <iostream>
 
 #include "db/parser.hpp"
@@ -62,5 +65,8 @@ public:
     const std::vector<double> &field_values() const { return col_field; }
     const std::vector<std::uint64_t> &timestamps() const { return col_timestamp; }
     const std::vector<std::uint64_t> &series_for_tag(std::string_view tag) const;
+
+    std::optional<std::uint32_t> find_field_id(std::string_view field_name) const;
+    std::uint64_t series_count() const { return next_series_id - 1; }
 };
 }

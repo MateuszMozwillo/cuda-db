@@ -82,6 +82,11 @@ bool MemTable::prepare(const DataPoint &dp, PreparedDp &result) {
         if (ts_ec != std::errc() || ts_ptr != dp.timestamp.data() + dp.timestamp.size()) {
             return false;
         }
+
+        // maximum value is reserved as the open end of query time ranges [from, to),
+        if (timestamp_as_int == std::numeric_limits<std::uint64_t>::max()) {
+            return false;
+        }
     }
 
     std::array<double, MAX_FIELD_COUNT> parsed_fields;
@@ -117,6 +122,14 @@ const std::vector<std::uint64_t> &MemTable::series_for_tag(std::string_view tag)
         return empty;
     }
     return tag_to_series[res->second];
+}
+
+std::optional<std::uint32_t> MemTable::find_field_id(std::string_view field_name) const {
+    auto res = field_id_dict.find(field_name);
+    if (res == field_id_dict.end()) {
+        return std::nullopt;
+    }
+    return res->second;
 }
 
 void MemTable::print_mem_table_columns() {

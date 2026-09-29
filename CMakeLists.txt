@@ -43,6 +43,9 @@ add_executable(unit_tests
     tests/test_parser.cpp
     tests/test_mem_table.cpp
     tests/test_engine.cpp
+    tests/test_query.cpp
+    tests/test_aggregation.cpp
+    tests/test_cpu_executor.cpp
 )
 
 target_link_libraries(unit_tests PRIVATE db_core Catch2::Catch2WithMain)

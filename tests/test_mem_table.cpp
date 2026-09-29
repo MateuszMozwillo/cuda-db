@@ -148,6 +148,20 @@ TEST_CASE("MemTable insert", "[mem_table]") {
         REQUIRE(mem_table.row_count() == 0);
     }
 
+    SECTION("Reject maximum u_int64 timestamp, it is reserved") {
+        bool success = insert_line(mem_table, "cpu usage=99.9 18446744073709551615\n");
+
+        REQUIRE(success == false);
+        REQUIRE(mem_table.row_count() == 0);
+    }
+
+    SECTION("Accept timestamp one below the maximum") {
+        bool success = insert_line(mem_table, "cpu usage=99.9 18446744073709551614\n");
+
+        REQUIRE(success == true);
+        REQUIRE(mem_table.timestamps()[0] == 18446744073709551614ULL);
+    }
+
     SECTION("Reject field value with trailing garbage") {
         bool success = insert_line(mem_table, "cpu usage=12abc\n");
 
