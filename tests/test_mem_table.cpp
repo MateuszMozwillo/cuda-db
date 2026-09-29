@@ -303,8 +303,8 @@ TEST_CASE("MemTable tag index", "[mem_table]") {
     SECTION("Series with two tags is listed under both") {
         REQUIRE(insert_line(mem_table, "sensor,location=Krakow,version=2 temperature=80.5 1\n") == true);
 
-        REQUIRE(mem_table.series_for_tag("location=Krakow") == std::vector<std::uint64_t>{1});
-        REQUIRE(mem_table.series_for_tag("version=2") == std::vector<std::uint64_t>{1});
+        REQUIRE(mem_table.series_for_tag("location=Krakow") == std::vector<std::uint32_t>{1});
+        REQUIRE(mem_table.series_for_tag("version=2") == std::vector<std::uint32_t>{1});
     }
 
     SECTION("Repeated lines of the same series do not duplicate entries") {
@@ -312,7 +312,7 @@ TEST_CASE("MemTable tag index", "[mem_table]") {
         REQUIRE(insert_line(mem_table, "sensor,location=Krakow temperature=81.0 2\n") == true);
         REQUIRE(insert_line(mem_table, "sensor,location=Krakow temperature=82.0 3\n") == true);
 
-        REQUIRE(mem_table.series_for_tag("location=Krakow") == std::vector<std::uint64_t>{1});
+        REQUIRE(mem_table.series_for_tag("location=Krakow") == std::vector<std::uint32_t>{1});
     }
 
     SECTION("Series sharing a tag are listed in ascending order") {
@@ -320,18 +320,18 @@ TEST_CASE("MemTable tag index", "[mem_table]") {
         REQUIRE(insert_line(mem_table, "sensor,location=Warsaw,version=1 temperature=81.0 2\n") == true);
         REQUIRE(insert_line(mem_table, "sensor,location=Krakow,version=2 temperature=82.0 3\n") == true);
 
-        REQUIRE(mem_table.series_for_tag("location=Krakow") == std::vector<std::uint64_t>{1, 3});
-        REQUIRE(mem_table.series_for_tag("location=Warsaw") == std::vector<std::uint64_t>{2});
-        REQUIRE(mem_table.series_for_tag("version=1") == std::vector<std::uint64_t>{1, 2});
-        REQUIRE(mem_table.series_for_tag("version=2") == std::vector<std::uint64_t>{3});
+        REQUIRE(mem_table.series_for_tag("location=Krakow") == std::vector<std::uint32_t>{1, 3});
+        REQUIRE(mem_table.series_for_tag("location=Warsaw") == std::vector<std::uint32_t>{2});
+        REQUIRE(mem_table.series_for_tag("version=1") == std::vector<std::uint32_t>{1, 2});
+        REQUIRE(mem_table.series_for_tag("version=2") == std::vector<std::uint32_t>{3});
     }
 
     SECTION("Tag value is part of the key") {
         REQUIRE(insert_line(mem_table, "sensor,location=Krakow temperature=80.5 1\n") == true);
         REQUIRE(insert_line(mem_table, "sensor,location=Warsaw temperature=81.0 2\n") == true);
 
-        REQUIRE(mem_table.series_for_tag("location=Krakow") == std::vector<std::uint64_t>{1});
-        REQUIRE(mem_table.series_for_tag("location=Warsaw") == std::vector<std::uint64_t>{2});
+        REQUIRE(mem_table.series_for_tag("location=Krakow") == std::vector<std::uint32_t>{1});
+        REQUIRE(mem_table.series_for_tag("location=Warsaw") == std::vector<std::uint32_t>{2});
         REQUIRE(mem_table.series_for_tag("location").empty() == true);
     }
 
@@ -357,7 +357,7 @@ TEST_CASE("MemTable tag index", "[mem_table]") {
     SECTION("Escaped space in tag value") {
         REQUIRE(insert_line(mem_table, "sensor,location=New\\ York temperature=80.5 1\n") == true);
 
-        REQUIRE(mem_table.series_for_tag("location=New\\ York") == std::vector<std::uint64_t>{1});
+        REQUIRE(mem_table.series_for_tag("location=New\\ York") == std::vector<std::uint32_t>{1});
         REQUIRE(mem_table.series_for_tag("location=New").empty() == true);
     }
 }

@@ -364,3 +364,104 @@ TEST_CASE("handle_cpu_query against a reference implementation", "[cpu_executor]
         require_state(merged, full.count, full.sum, full.min, full.max);
     }
 }
+
+TEST_CASE("handle_cpu_query with multiple threads", "[cpu_executor]") {
+    MemTable mem_table;
+    for (int i = 0; i < 20000; ++i) {
+        std::string line = "sensor,host=h" + std::to_string(i % 7) +
+                           " v=" + std::to_string((i * 37) % 201 - 100) +
+                           " " + std::to_string(static_cast<std::uint64_t>(i) * 10) + "\n";
+        insert_line(mem_table, line.c_str());
+    }
+
+    auto resolve = [&](std::vector<std::string> tags, std::uint64_t from, std::uint64_t to) {
+        Query query;
+        query.field = "v";
+        query.tags = std::move(tags);
+        query.from = from;
+        query.to = to;
+        query.operation_type = OperationType::AVG;
+
+        ResolvedQuery resolved;
+        REQUIRE(resolve_query(mem_table, query, resolved) == ResolveResult::OK);
+        return resolved;
+    };
+
+    auto require_same_for_all_thread_counts = [&](const ResolvedQuery &resolved) {
+        AggState single = handle_cpu_query(mem_table, resolved, 1);
+        for (unsigned threads : {2u, 3u, 4u, 7u, 8u, 16u, 64u, 1000u}) {
+            AggState multi = handle_cpu_query(mem_table, resolved, threads);
+            require_state(multi, single.count, single.sum, single.min, single.max);
+        }
+        AggState automatic = handle_cpu_query(mem_table, resolved);
+        require_state(automatic, single.count, single.sum, single.min, single.max);
+    };
+
+    SECTION("No filters") {
+        ResolvedQuery resolved = resolve({}, 0, MAX_TS);
+
+        require_same_for_all_thread_counts(resolved);
+        REQUIRE(handle_cpu_query(mem_table, resolved, 8).count == 20000);
+    }
+
+    SECTION("Tag filter") {
+        require_same_for_all_thread_counts(resolve({"host=h3"}, 0, MAX_TS));
+    }
+
+    SECTION("Time range that falls into a single thread's chunk") {
+        require_same_for_all_thread_counts(resolve({}, 100, 200));
+    }
+
+    SECTION("Time range that crosses chunk boundaries") {
+        require_same_for_all_thread_counts(resolve({"host=h5"}, 12345, 150001));
+    }
+
+    SECTION("Only the first and the last row match") {
+        MemTable edges;
+        insert_line(edges, "sensor,host=x v=1 1\n");
+        for (int i = 0; i < 1000; ++i) {
+            std::string line = "sensor,host=y v=" + std::to_string(i) + " " + std::to_string(i + 2) + "\n";
+            insert_line(edges, line.c_str());
+        }
+        insert_line(edges, "sensor,host=x v=2 5000\n");
+
+        Query query;
+        query.field = "v";
+        query.tags = {"host=x"};
+        query.operation_type = OperationType::AVG;
+        ResolvedQuery resolved;
+        REQUIRE(resolve_query(edges, query, resolved) == ResolveResult::OK);
+
+        for (unsigned threads : {1u, 2u, 3u, 16u, 1002u}) {
+            require_state(handle_cpu_query(edges, resolved, threads), 2, 3.0, 1.0, 2.0);
+        }
+    }
+}
+
+TEST_CASE("handle_cpu_query thread count limits", "[cpu_executor]") {
+    SECTION("More threads than rows") {
+        MemTable mem_table;
+        fill_mem_table(mem_table);
+        ResolvedQuery resolved;
+        resolved.field_id = 1;
+
+        require_state(handle_cpu_query(mem_table, resolved, 64), 7, 177.0, -5.0, 100.0);
+    }
+
+    SECTION("Single row with many threads") {
+        MemTable mem_table;
+        insert_line(mem_table, "sensor v=3 1\n");
+        ResolvedQuery resolved;
+        resolved.field_id = 1;
+
+        require_state(handle_cpu_query(mem_table, resolved, 16), 1, 3.0, 3.0, 3.0);
+    }
+
+    SECTION("Empty mem table with many threads") {
+        MemTable mem_table;
+        ResolvedQuery resolved;
+        resolved.field_id = 1;
+
+        require_empty(handle_cpu_query(mem_table, resolved, 16));
+    }
+}

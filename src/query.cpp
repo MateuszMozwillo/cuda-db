@@ -43,8 +43,8 @@ ResolveResult resolve_query(const MemTable &mem_table, const Query &query, Resol
         return ResolveResult::OK;
     }
 
-    std::vector<uint64_t> intersection_aux;
-    std::vector<uint64_t> matching = mem_table.series_for_tag(query.tags[0]);
+    std::vector<std::uint32_t> intersection_aux;
+    std::vector<std::uint32_t> matching = mem_table.series_for_tag(query.tags[0]);
     for (size_t i = 1; i < query.tags.size(); ++i) {
         intersection_aux.clear();
         const auto &crnt_tag_series = mem_table.series_for_tag(query.tags[i]);

@@ -2,7 +2,7 @@
 
 namespace db {
 
-std::pair<bool, std::uint64_t> MemTable::get_series_id(std::string_view tags) {
+std::pair<bool, std::uint32_t> MemTable::get_series_id(std::string_view tags) {
 
     auto res = series_id_dict.find(tags);
     if (res != series_id_dict.end()) {
@@ -114,8 +114,8 @@ bool MemTable::prepare(const DataPoint &dp, PreparedDp &result) {
     return true;
 }
 
-const std::vector<std::uint64_t> &MemTable::series_for_tag(std::string_view tag) const {
-    static const std::vector<std::uint64_t> empty;
+const std::vector<std::uint32_t> &MemTable::series_for_tag(std::string_view tag) const {
+    static const std::vector<std::uint32_t> empty;
 
     auto res = tag_id_dict.find(tag);
     if (res == tag_id_dict.end()) {

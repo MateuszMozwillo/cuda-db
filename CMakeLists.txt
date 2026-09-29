@@ -16,17 +16,27 @@ add_library(db_core
     src/cpu_executor.cpp
 )
 
+find_package(Threads REQUIRED)
+target_link_libraries(db_core PUBLIC Threads::Threads)
+
 add_executable(gpu-db
     src/main.cpp
 )
 target_link_libraries(gpu-db PRIVATE db_core)
 
+add_executable(benchmark
+    benchmark/benchmark.cpp
+)
+target_link_libraries(benchmark PRIVATE db_core)
+
 if(MSVC)
     target_compile_options(gpu-db PRIVATE /O2)
     target_compile_options(db_core PRIVATE /O2)
+    target_compile_options(benchmark PRIVATE /O2)
 else()
     target_compile_options(gpu-db PRIVATE -O3 -march=native -Wall -Wextra)
     target_compile_options(db_core PRIVATE -O3 -march=native -Wall -Wextra)
+    target_compile_options(benchmark PRIVATE -O3 -march=native -Wall -Wextra)
 endif()
 
 enable_testing()
