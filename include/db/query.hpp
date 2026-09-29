@@ -9,6 +9,13 @@
 
 #include "db/mem_table.hpp"
 
+#ifdef __CUDACC__
+#define DB_HOST_DEVICE __host__ __device__
+#else
+#define DB_HOST_DEVICE
+#endif
+
+
 namespace db {
 
 enum class OperationType {
@@ -24,19 +31,18 @@ struct AggState {
     double min = std::numeric_limits<double>::infinity();
     double max = -std::numeric_limits<double>::infinity();
 
-    void update(double value);
-    void merge(const AggState &other);
+    DB_HOST_DEVICE void update(double value);
+    DB_HOST_DEVICE void merge(const AggState &other);
 };
 
-// use fmin / fmax instead of std::min / std::max for compatibility with CUDA
-inline void AggState::update(double value) {
+DB_HOST_DEVICE inline void AggState::update(double value) {
     min = fmin(min, value);
     max = fmax(max, value);
     sum += value;
     ++count;
 }
 
-inline void AggState::merge(const AggState &other) {
+DB_HOST_DEVICE inline void AggState::merge(const AggState &other) {
     min = fmin(min, other.min);
     max = fmax(max, other.max);
     sum += other.sum;

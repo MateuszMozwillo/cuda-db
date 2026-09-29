@@ -39,6 +39,45 @@ else()
     target_compile_options(benchmark PRIVATE -O3 -march=native -Wall -Wextra)
 endif()
 
+option(GPU_DB_ENABLE_CUDA "Build the CUDA query executor" ON)
+
+if(GPU_DB_ENABLE_CUDA)
+    if(NOT DEFINED CMAKE_CUDA_COMPILER AND EXISTS /usr/local/cuda/bin/nvcc)
+        set(CMAKE_CUDA_COMPILER /usr/local/cuda/bin/nvcc)
+    endif()
+
+    include(CheckLanguage)
+    check_language(CUDA)
+
+    if(CMAKE_CUDA_COMPILER)
+        if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+            set(CMAKE_CUDA_ARCHITECTURES native)
+        endif()
+
+        enable_language(CUDA)
+        set(CMAKE_CUDA_STANDARD 20)
+        set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+
+        find_package(CUDAToolkit REQUIRED)
+
+        add_library(db_gpu
+            src/gpu_executor.cu
+        )
+        target_link_libraries(db_gpu PUBLIC db_core CUDA::cudart)
+        target_compile_definitions(db_gpu PUBLIC GPU_DB_HAS_CUDA)
+        target_compile_options(db_gpu PRIVATE
+            $<$<COMPILE_LANGUAGE:CUDA>:-O3 --expt-relaxed-constexpr -Xcompiler=-Wall,-Wextra>
+        )
+
+        target_link_libraries(benchmark PRIVATE db_gpu)
+
+        message(STATUS "CUDA executor enabled (nvcc ${CMAKE_CUDA_COMPILER_VERSION}, architectures: ${CMAKE_CUDA_ARCHITECTURES})")
+    else()
+        message(WARNING "CUDA compiler not found, building without the GPU executor")
+        set(GPU_DB_ENABLE_CUDA OFF)
+    endif()
+endif()
+
 enable_testing()
 
 include(FetchContent)
@@ -59,6 +98,9 @@ add_executable(unit_tests
 )
 
 target_link_libraries(unit_tests PRIVATE db_core Catch2::Catch2WithMain)
+if(GPU_DB_ENABLE_CUDA)
+    target_link_libraries(unit_tests PRIVATE db_gpu)
+endif()
 
 include(CTest)
 include(Catch)
