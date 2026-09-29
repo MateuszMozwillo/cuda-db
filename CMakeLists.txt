@@ -99,6 +99,7 @@ add_executable(unit_tests
 
 target_link_libraries(unit_tests PRIVATE db_core Catch2::Catch2WithMain)
 if(GPU_DB_ENABLE_CUDA)
+    target_sources(unit_tests PRIVATE tests/test_gpu_executor.cpp)
     target_link_libraries(unit_tests PRIVATE db_gpu)
 endif()
 

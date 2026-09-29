@@ -1,5 +1,6 @@
 #include "db/gpu_executor.hpp"
 
+#include <algorithm>
 #include <vector>
 
 #include "db/cuda_utils.cuh"
@@ -15,10 +16,34 @@ void upload_column(T *&d_column, const std::vector<T> &column) {
     CUDA_CHECK(cudaMemcpy(d_column, column.data(), bytes, cudaMemcpyHostToDevice));
 }
 
+template <typename T>
+void ensure_capacity(T *&d_buffer, size_t &capacity, size_t count) {
+    if (count <= capacity) {
+        return;
+    }
+    cudaFree(d_buffer);
+    d_buffer = nullptr;
+    capacity = 0;
+
+    CUDA_CHECK(cudaMalloc(&d_buffer, count * sizeof(T)));
+    capacity = count;
+}
+
+}
+
+bool GpuExecutor::device_available() {
+    int device_count = 0;
+    return cudaGetDeviceCount(&device_count) == cudaSuccess && device_count > 0;
+}
+
+void GpuExecutor::initialize_device() {
+    // cudaFree(nullptr) does nothing except forcing the runtime to create the context
+    CUDA_CHECK(cudaFree(nullptr));
 }
 
 GpuExecutor::~GpuExecutor() {
     free_columns();
+    free_query_buffers();
 }
 
 void GpuExecutor::free_columns() {
@@ -32,6 +57,16 @@ void GpuExecutor::free_columns() {
     d_field_values = nullptr;
     d_timestamps = nullptr;
     row_count = 0;
+}
+
+void GpuExecutor::free_query_buffers() {
+    cudaFree(d_series_filter);
+    cudaFree(d_block_results);
+
+    d_series_filter = nullptr;
+    series_filter_capacity = 0;
+    d_block_results = nullptr;
+    block_results_capacity = 0;
 }
 
 void GpuExecutor::upload(const MemTable &mem_table) {
@@ -51,6 +86,8 @@ void GpuExecutor::upload(const MemTable &mem_table) {
 namespace {
 
 constexpr unsigned BLOCK_SIZE = 256;
+
+constexpr int BLOCKS_PER_MULTIPROCESSOR = 8;
 
 __global__ void scan_kernel(const std::uint32_t *__restrict__ series_ids,
                             const std::uint32_t *__restrict__ field_ids,
@@ -107,6 +144,46 @@ __global__ void scan_kernel(const std::uint32_t *__restrict__ series_ids,
     }
 }
 
+}
+
+AggState GpuExecutor::run_query(const ResolvedQuery &query) {
+    if (row_count == 0) {
+        return AggState{};
+    }
+
+    if (multiprocessor_count == 0) {
+        int device = 0;
+        CUDA_CHECK(cudaGetDevice(&device));
+        CUDA_CHECK(cudaDeviceGetAttribute(&multiprocessor_count, cudaDevAttrMultiProcessorCount, device));
+    }
+
+    const std::uint8_t *d_filter = nullptr;
+    if (query.has_series_filter) {
+        size_t filter_size = query.series_filter.size();
+        ensure_capacity(d_series_filter, series_filter_capacity, filter_size);
+        CUDA_CHECK(cudaMemcpy(d_series_filter, query.series_filter.data(), filter_size, cudaMemcpyHostToDevice));
+        d_filter = d_series_filter;
+    }
+
+    size_t blocks_for_rows = (row_count + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    size_t max_blocks = static_cast<size_t>(multiprocessor_count) * BLOCKS_PER_MULTIPROCESSOR;
+    unsigned int blocks = static_cast<unsigned int>(std::max<size_t>(1, std::min(blocks_for_rows, max_blocks)));
+
+    ensure_capacity(d_block_results, block_results_capacity, blocks);
+
+    scan_kernel<<<blocks, BLOCK_SIZE>>>(d_series_ids, d_field_ids, d_field_values, d_timestamps, row_count,
+                                        query.field_id, query.from, query.to,
+                                        query.has_series_filter, d_filter, d_block_results);
+    CUDA_CHECK_LAUNCH();
+
+    block_results.resize(blocks);
+    CUDA_CHECK(cudaMemcpy(block_results.data(), d_block_results, blocks * sizeof(AggState), cudaMemcpyDeviceToHost));
+
+    AggState result;
+    for (const auto &block_result : block_results) {
+        result.merge(block_result);
+    }
+    return result;
 }
 
 }

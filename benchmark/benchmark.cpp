@@ -10,12 +10,17 @@
 #include <cstdio>
 #include <cstdlib>
 #include <limits>
+#include <map>
+#include <memory>
 #include <optional>
 #include <random>
 #include <string>
 #include <vector>
 
 #include "db/engine.hpp"
+#ifdef GPU_DB_HAS_CUDA
+#include "db/gpu_executor.hpp"
+#endif
 #include "db/parser.hpp"
 #include "db/query.hpp"
 
@@ -136,6 +141,44 @@ const char *operation_name(db::OperationType op) {
     return "?";
 }
 
+struct Timing {
+    double best;
+    double median;
+    double average;
+};
+
+// runs fn QUERY_REPEATS times and returns the timing in seconds
+template <typename Fn>
+Timing measure(Fn fn) {
+    std::vector<double> times;
+    times.reserve(QUERY_REPEATS);
+
+    for (int i = 0; i < QUERY_REPEATS; ++i) {
+        auto start = Clock::now();
+        fn();
+        times.push_back(seconds_since(start));
+    }
+
+    std::sort(times.begin(), times.end());
+    double median = times.size() % 2 == 1
+        ? times[times.size() / 2]
+        : (times[times.size() / 2 - 1] + times[times.size() / 2]) / 2.0;
+    double total = 0.0;
+    for (double time : times) total += time;
+
+    return {times.front(), median, total / times.size()};
+}
+
+std::string format_result(std::optional<double> result) {
+    char text[32];
+    if (result) {
+        std::snprintf(text, sizeof(text), "%.3f", *result);
+    } else {
+        std::snprintf(text, sizeof(text), "no data");
+    }
+    return text;
+}
+
 }
 
 int main(int argc, char *argv[]) {
@@ -205,40 +248,87 @@ int main(int argc, char *argv[]) {
             make_query("memory", "used_percent", db::OperationType::COUNT, {"env=staging"}, mid_from, mid_to)},
     };
 
-    std::printf("Queries (%d runs each, best, median and average time):\n", QUERY_REPEATS);
+    std::printf("CPU queries (%d runs each, best, median and average time):\n", QUERY_REPEATS);
     std::printf("  %-48s %-6s %14s %10s %10s %10s\n",
                 "query", "op", "result", "best ms", "median ms", "avg ms");
 
+    std::vector<Timing> cpu_timings;
+    std::vector<std::optional<double>> cpu_results;
+
     for (const auto &named : queries) {
         std::optional<double> result;
-        std::vector<double> times;
-        times.reserve(QUERY_REPEATS);
-
-        for (int i = 0; i < QUERY_REPEATS; ++i) {
-            auto start = Clock::now();
-            result = engine.query(named.query);
-            times.push_back(seconds_since(start));
-        }
-
-        std::sort(times.begin(), times.end());
-        double best = times.front();
-        double median = times.size() % 2 == 1
-            ? times[times.size() / 2]
-            : (times[times.size() / 2 - 1] + times[times.size() / 2]) / 2.0;
-        double total = 0.0;
-        for (double time : times) total += time;
-
-        char result_text[32];
-        if (result) {
-            std::snprintf(result_text, sizeof(result_text), "%.3f", *result);
-        } else {
-            std::snprintf(result_text, sizeof(result_text), "no data");
-        }
+        Timing timing = measure([&]() { result = engine.query(named.query); });
+        cpu_timings.push_back(timing);
+        cpu_results.push_back(result);
 
         std::printf("  %-48s %-6s %14s %10.3f %10.3f %10.3f\n",
-                    named.description, operation_name(named.query.operation_type), result_text,
-                    best * 1e3, median * 1e3, total / QUERY_REPEATS * 1e3);
+                    named.description, operation_name(named.query.operation_type), format_result(result).c_str(),
+                    timing.best * 1e3, timing.median * 1e3, timing.average * 1e3);
     }
+
+#ifdef GPU_DB_HAS_CUDA
+    if (!db::GpuExecutor::device_available()) {
+        std::printf("\nGPU: no CUDA device available, skipping\n");
+        return 0;
+    }
+
+    // creating the CUDA context takes a few hundred ms, do it before measuring the upload
+    db::GpuExecutor::initialize_device();
+
+    // every dataset gets its own copy of the columns in GPU memory, uploaded once
+    std::map<std::string, std::unique_ptr<db::GpuExecutor>> gpu_executors;
+    double upload_seconds = 0.0;
+    for (const auto &dataset : DATASETS) {
+        const db::MemTable *mem_table = engine.find_mem_table(dataset.name);
+        if (mem_table == nullptr) continue;
+
+        auto executor = std::make_unique<db::GpuExecutor>();
+        auto start = Clock::now();
+        executor->upload(*mem_table);
+        upload_seconds += seconds_since(start);
+        gpu_executors[dataset.name] = std::move(executor);
+    }
+
+    std::printf("\nGPU upload (all datasets): %.1f ms\n\n", upload_seconds * 1e3);
+
+    std::printf("GPU queries (%d runs each, best, median and average time):\n", QUERY_REPEATS);
+    std::printf("  %-48s %-6s %14s %10s %10s %10s %12s\n",
+                "query", "op", "result", "best ms", "median ms", "avg ms", "vs CPU");
+
+    for (std::size_t q = 0; q < queries.size(); ++q) {
+        const NamedQuery &named = queries[q];
+        const db::MemTable *mem_table = engine.find_mem_table(named.query.dataset);
+        db::GpuExecutor &gpu = *gpu_executors.at(named.query.dataset);
+
+        // same steps as Engine::query, only the scan runs on the GPU
+        auto run = [&]() -> std::optional<double> {
+            db::ResolvedQuery resolved;
+            if (db::resolve_query(*mem_table, named.query, resolved) == db::ResolveResult::NO_MATCH) {
+                return db::finalize(db::AggState{}, named.query.operation_type);
+            }
+            return db::finalize(gpu.run_query(resolved), named.query.operation_type);
+        };
+
+        run();  // warm up: the first launch of a kernel is slower
+
+        std::optional<double> result;
+        Timing timing = measure([&]() { result = run(); });
+
+        char speedup[32];
+        std::snprintf(speedup, sizeof(speedup), "%.2fx", cpu_timings[q].median / timing.median);
+
+        std::printf("  %-48s %-6s %14s %10.3f %10.3f %10.3f %12s\n",
+                    named.description, operation_name(named.query.operation_type), format_result(result).c_str(),
+                    timing.best * 1e3, timing.median * 1e3, timing.average * 1e3, speedup);
+
+        bool same_presence = result.has_value() == cpu_results[q].has_value();
+        bool same_value = !result || !cpu_results[q] ||
+                          std::abs(*result - *cpu_results[q]) <= 1e-9 * std::max(1.0, std::abs(*cpu_results[q]));
+        if (!same_presence || !same_value) {
+            std::printf("  warning: GPU result differs from CPU result %s\n", format_result(cpu_results[q]).c_str());
+        }
+    }
+#endif
 
     return 0;
 }
